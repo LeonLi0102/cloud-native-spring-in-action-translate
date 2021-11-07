@@ -1,0 +1,36 @@
+{
+	"title": "Cloud Native  Spring In Action",
+	"author": "Craig Walls",
+	"language" : "zh-hans",
+	"plugins": [
+		"-search",
+		"search-pro",
+		"back-to-top-button",
+		"chapter-fold",
+		"code",
+		"copy-code-button",
+		"pageview-count",
+		"auto-scroll-table",
+		"popup",
+		"theme-comscore",
+		"prism",
+		"-highlight",
+		"fontsettings"
+
+	],
+	"pluginsConfig": {
+        "fontSettings": {
+			"theme": "white", 
+            "family": "serif",
+            "size": 4
+        },
+        "github": {
+            "url": "https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git"
+        },
+        "prism": {
+            "css": [
+                "prismjs/themes/prism-tomorrow.css"
+            ]
+        }
+	}
+}
