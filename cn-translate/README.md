@@ -1,7 +1,7 @@
 # 云原生 Spring 实战 （MEAP)
 
 《Cloud Native Spring in Action With Spring Boot and Kubernetes》 预计将于 2022 年春出版。现在的翻译基于 Manning 出版社的 MEAP 版本。
-![](cn-translate/assets/00-Vitale-CNS-MEAP-HI.png)
+![](assets/00-Vitale-CNS-MEAP-HI.png)
 
 地址：https://www.manning.com/books/cloud-native-spring-in-action
 
