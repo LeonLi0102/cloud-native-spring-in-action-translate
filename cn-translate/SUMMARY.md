@@ -18,4 +18,8 @@
         * [1.3.3 强适应性](01-Introduction-to-cloud-native/1.3-Properties-of-cloud-native-applications/1.3.3-Resilience.md)
         * [1.3.4 可观测性](01-Introduction-to-cloud-native/1.3-Properties-of-cloud-native-applications/1.3.4-Observability.md)
         * [1.3.5 可管理性](01-Introduction-to-cloud-native/1.3-Properties-of-cloud-native-applications/1.3.5-Manageability.md)
+    * [1.4 支持云原生的文化和实践](01-Introduction-to-cloud-native/1.4-Culture-and-practices-supporting-cloud-native/Introduction.md)
+        * [1.4.1 自动化](01-Introduction-to-cloud-native/1.4-Culture-and-practices-supporting-cloud-native/1.4.1-Automation.md)
+        * [1.4.2 持续交付](01-Introduction-to-cloud-native/1.4-Culture-and-practices-supporting-cloud-native/1.4.2-Continuous-delivery.md)
+        * [1.4.3 DevOps](01-Introduction-to-cloud-native/1.4-Culture-and-practices-supporting-cloud-native/1.4.3-DevOps.md)
 
