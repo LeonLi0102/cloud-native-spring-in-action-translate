@@ -33,3 +33,6 @@ LiveBook: https://livebook.manning.com/book/cloud-native-spring-in-action
 | 1 - Cloud native patterns and technologies | **进行中** |
 
 GitHub地址：[https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git](https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git)
+
+
+GitBook地址：[https://leonli0102.github.io/cloud-native-spring-in-action/](https://leonli0102.github.io/cloud-native-spring-in-action/)
