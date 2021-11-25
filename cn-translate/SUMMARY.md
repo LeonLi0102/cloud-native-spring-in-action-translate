@@ -52,7 +52,7 @@
         * [2.1.14 遥测](02-Cloud-native-patterns-and-technologies/2.1-Cloud-native-development-principles-Twelve-Factors-and-beyond/2.1.14-Telemetry.md)
         * [2.1.15 认证和授权](02-Cloud-native-patterns-and-technologies/2.1-Cloud-native-development-principles-Twelve-Factors-and-beyond/2.1.15-Authentication-and-authorization.md)
     * [2.2 使用 Spring 构建云原生应用](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/Introduction.md)
-        * [2.2.1 Spring 概览](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/2.2.1-Overview-of-the-Spring-landscape.md)
+        * [2.2.1 Spring 全景概览](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/2.2.1-Overview-of-the-Spring-landscape.md)
         * [2.2.2 创建 Spring Boot 应用](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/2.2.2-Building-a-Spring-Boot-application.md)
     * [2.3 使用 Docker 容器化应用](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/Introduction.md)
         * [2.3.1 介绍 Docker 镜像和容器](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/2.3.1-Introducing-Docker-Images-and-containers.md)
