@@ -60,7 +60,7 @@
     * [2.4 使用 Kubernetes 管理容器](02-Cloud-native-patterns-and-technologies/2.4-Managing-containers-with-Kubernetes/Introduction.md)
         * [2.4.1 介绍 Kubernetes 的 Deployment、Pod 和 Service](02-Cloud-native-patterns-and-technologies/2.4-Managing-containers-with-Kubernetes/2.4.1-Introducing-Kubernetes-Deployments-pods-and-services.md)
         * [2.4.2 在 Kubernetes 是运行 Spring 应用](02-Cloud-native-patterns-and-technologies/2.4-Managing-containers-with-Kubernetes/2.4.2-Running-a-Spring-application-on-Kubernetes.md)
-    * [2.5 云原生应用 —— Polar Bookshop](02-Cloud-native-patterns-and-technologies/2.5-Polar-Bookshop-A-cloud-native-application/Introduction.md)
+    * [2.5 云原生应用 —— `极地书店`](02-Cloud-native-patterns-and-technologies/2.5-Polar-Bookshop-A-cloud-native-application/Introduction.md)
         * [2.5.1 理解系统需求](02-Cloud-native-patterns-and-technologies/2.5-Polar-Bookshop-A-cloud-native-application/2.5.1-Understanding-the-requirements-of-the-system.md)
         * [2.5.2 工程中用到的技术和模式](02-Cloud-native-patterns-and-technologies/2.5-Polar-Bookshop-A-cloud-native-application/2.5.2-Exploring-patterns-and-technologies-used-in-the-project.md)
     * [2.6 总结](02-Cloud-native-patterns-and-technologies/Summary.md)
