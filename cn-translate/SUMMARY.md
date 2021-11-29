@@ -55,7 +55,7 @@
         * [2.2.1 Spring 全景概览](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/2.2.1-Overview-of-the-Spring-landscape.md)
         * [2.2.2 创建 Spring Boot 应用](02-Cloud-native-patterns-and-technologies/2.2-Building-cloud-native-applications-with-Spring/2.2.2-Building-a-Spring-Boot-application.md)
     * [2.3 使用 Docker 容器化应用](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/Introduction.md)
-        * [2.3.1 介绍 Docker 镜像和容器](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/2.3.1-Introducing-Docker-Images-and-containers.md)
+        * [2.3.1 Docker 介绍：镜像和容器](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/2.3.1-Introducing-Docker-Images-and-containers.md)
         * [2.3.2 运行 Spring 应用容器](02-Cloud-native-patterns-and-technologies/2.3-Containerizing-applications-with-Docker/2.3.2-Running-a-Spring-application-as-a-container.md)
     * [2.4 使用 Kubernetes 管理容器](02-Cloud-native-patterns-and-technologies/2.4-Managing-containers-with-Kubernetes/Introduction.md)
         * [2.4.1 介绍 Kubernetes 的 Deployment、Pod 和 Service](02-Cloud-native-patterns-and-technologies/2.4-Managing-containers-with-Kubernetes/2.4.1-Introducing-Kubernetes-Deployments-pods-and-services.md)
