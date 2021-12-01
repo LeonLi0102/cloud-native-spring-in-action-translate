@@ -30,8 +30,9 @@ LiveBook: https://livebook.manning.com/book/cloud-native-spring-in-action
 | Welcome | 完成 | leonli0102 |
 | Part 1 Cloud Native |  |
 | 1 - Introduction to cloud native | 完成 | leonli0102 |
-| 2 - Cloud native patterns and technologies | **进行中** | leonli0102 |
+| 2 - Cloud native patterns and technologies | 完成 | leonli0102 |
 | 3 - Getting started with cloud native development | **进行中** | nanachi1027 |
+| 4 - Externalized configuration management | **进行中** | leonli0102 |
 
 GitHub地址：[https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git](https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git)
 
