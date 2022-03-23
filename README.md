@@ -1,6 +1,6 @@
 # 云原生 Spring 实战 (基于 Spring boot 和 Kubernetes)
 
-《Cloud Native Spring in Action With Spring Boot and Kubernetes》 预计将于 2022 年春出版。现在的翻译基于 Manning 出版社的 MEAP 版本。
+《Cloud Native Spring in Action With Spring Boot and Kubernetes》 预计将于 2022 年夏出版。现在的翻译基于 Manning 出版社的 MEAP 版本。
 
 ![](cn-translate/assets/00-Vitale-CNS-MEAP-HI.png)
 
@@ -31,7 +31,7 @@ LiveBook: https://livebook.manning.com/book/cloud-native-spring-in-action
 | Part 1 Cloud Native |  |
 | 1 - Introduction to cloud native | 完成 | leonli0102 |
 | 2 - Cloud native patterns and technologies | 完成 | leonli0102 |
-| 3 - Getting started with cloud native development | **进行中** | nanachi1027 |
+| 3 - Getting started with cloud native development | **进行中** | leonli0102 |
 | 4 - Externalized configuration management | **进行中** | leonli0102 |
 
 GitHub地址：[https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git](https://github.com/LeonLi0102/cloud-native-spring-in-action-translate.git)
