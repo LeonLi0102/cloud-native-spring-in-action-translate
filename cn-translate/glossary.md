@@ -33,3 +33,19 @@
 | Bounded Context | 限界上下文 | DDD 概念 |
 | Schema | 模式/架构 | 数据库术语 |
 | Migration | 迁移 | 数据库版本控制 |
+| Serverless | Serverless / 无服务器 | 保留原词为主 |
+| GraalVM | GraalVM | 保留不翻译 |
+| Native Image | 原生镜像 | GraalVM 概念 |
+| JIT | JIT | Just-In-Time 即时编译 |
+| AOT | AOT | Ahead-Of-Time 提前编译 |
+| Spring Native | Spring Native | 保留不翻译 |
+| Spring Cloud Function | Spring Cloud Function | 保留不翻译 |
+| Knative | Knative | 保留不翻译 |
+| FaaS | FaaS | 函数即服务 |
+| Buildpacks | Buildpacks | Cloud Native Buildpacks |
+| Cold Start | 冷启动 | 首次调用延迟 |
+| Scaling to zero | 缩容到零 | |
+| minikube | minikube | 保留不翻译 |
+| sdkman | sdkman | 保留不翻译 |
+| CloudEvents | CloudEvents | 保留不翻译 |
+| Tekton | Tekton | 保留不翻译 |
