@@ -1,0 +1,2116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>云原生 Spring 实战 中文翻译</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; line-height: 1.8; max-width: 900px; margin: 0 auto; padding: 40px; font-size: 14px; }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px; page-break-before: always; }
+        h1:first-of-type { page-break-before: avoid; }
+        h2 { color: #34495e; margin-top: 40px; }
+        h3 { color: #7f8c8d; }
+        code { background: #ecf0f1; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; }
+        pre { background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 5px; overflow-x: auto; }
+        pre code { background: transparent; color: inherit; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #bdc3c7; padding: 12px; text-align: left; }
+        th { background: #ecf0f1; font-weight: bold; }
+        blockquote { border-left: 4px solid #3498db; margin: 20px 0; padding: 15px 25px; background: #f8f9fa; color: #555; }
+        img { max-width: 100%; height: auto; }
+        hr { border: none; border-top: 1px solid #ecf0f1; margin: 40px 0; }
+        @media print {
+            body { font-size: 12pt; }
+            h1 { page-break-before: always; }
+            pre { white-space: pre-wrap; word-wrap: break-word; }
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center; page-break-before: avoid;">云原生 Spring 实战 中文翻译</h1>
+    <p style="text-align: center; color: #7f8c8d;"><em>Cloud Native Spring in Action With Spring Boot and Kubernetes</em></p>
+    <p style="text-align: center;"><strong>作者：Thomas Vitale</strong></p>
+    <p style="text-align: center; color: #95a5a6;">翻译基于 AI 辅助完成</p>
+    <hr>
+    <h1>欢迎</h1>
+<p>感谢您购买 MEAP 版的《Cloud Native Spring In Action》。</p>
+<p>为了从本书中获得最大的收益，您需要熟练掌握 Java 编程，需要具有构建 web 应用程序的经验，还要有 Spring 核心功能的基本知识。我假设您也熟悉 Git、面向对象编程、分布式系统、数据库和测试等。</p>
+<p>在过去的几年中，越来越明显的是，许多组织不得不选择上云来保持经营活动。基于应用服务器和“雪花”（参考 <a href="https://martinfowler.com/bliki/SnowflakeServer.html">SnowflakeServer</a>）式内部传统基础架构，很难满足现代应用程序的需求：可扩展性、弹性、零停机时间、可靠性、短反馈周期和频繁发布。为了充分利用云的功能，只将传统应用程序迁移到新的基础架构是不够的，还需要一些别的东西。应用程序必须成为云原生应用程序。</p>
+<p>本书将带领您在云原生世界中展开一段激动人心的旅程。从开发环境到生产环境，使用 Spring、Docker 和 Kubernetes 的最新功能。您将有机会实现每一个新想法，逐步为在线书店构建一个完整的云原生系统。到本书结束，您将把它部署到公有云的 Kubernetes 集群中。</p>
+<p>本书分为四个部分。第 1 部分将引导您了解云原生环境，定义成为云原生应用程序需要些什么，并建立一些工具、技术和模式，以备后续使用。</p>
+<p>第 2 部分将让您了解云原生开发的基础知识。您将了解  与 Spring RESTful 服务和数据持久化。了解如何跨环境管理配置，定义自动化持续集成过程，了解 Docker 容器化如何工作。最后将您的应用部署到本地 Kubernetes 集群。</p>
+<p>在第 3 部分中，您的旅程将达到一个全新的高度。您将单体应用迁移到云上的分布式系统中。您将了解响应式编程、可扩展性、弹性和边缘服务。然后，您将探索事件驱动体系结构，并通过身份验证、授权和加密保护您的系统。</p>
+<p>第 4 部分中，您将确保应用程序的可观测性，处理日志记录、跟踪和监视。最后，您将到达渴望已久的目的地：生产环境。您将学习如何将应用程序部署到 Kubernetes 公有云集群，并实现自动化交付和部署。在生产环境的新旅程开始了。您将熟悉云原生冒险中的下一步，学习迁移现有应用程序。</p>
+<p>请让我知道您对目前为止所写的这些内容的想法，以及您希望在接下来的章节中看到哪些内容？欢迎您在 <a href="https://livebook.manning.com/#!/book/cloud-native-spring-in-action/discussion">liveBook 讨论论坛</a> 上发表意见 —— 您的反馈对改进《Cloud Native Spring In Action》一书有重要价值。</p>
+<p>您可以在 <a href="https://github.com/ThomasVitale/cloud-native-spring-in-action">GitHub</a> 附带的存储库中找到本书中使用的所有代码示例。</p>
+<p>再次感谢您的关注和购买！</p>
+<p>—Thomas Vitale</p>
+<hr />
+<h1>第 1 章 云原生简介</h1>
+<p>本章内容：</p>
+<ul>
+<li>什么是云和云计算模型</li>
+<li>云原生的定义</li>
+<li>云原生应用的特性</li>
+<li>支持云原生的文化和实践</li>
+<li>您应该考虑云原生的时间点和原因</li>
+<li>云原生应用程序的拓扑和体系结构</li>
+</ul>
+<p>云原生应用是高度分布式的系统，它们运行在云中，对变化的适应能力很强。系统由多个服务组成，这些服务通过网络进行通信，并部署在动态环境中，其中所有内容都在不断变化。</p>
+<p>在深入研究 Spring、Docker 和 Kubernetes 之前，最基本的是首先定义什么是云原生。像我们领域中的其他流行语（如敏捷、DevOps 或 微服务）一样，云原生有时会被误解，并且可能会引起混淆，因为它对不同的人意味着不同的事情。</p>
+<p>在本章中，我将为您提供本书其余部分所需的概念。首先，我将定义云原生并说明一个应用成为云原生应用所需的条件。我将解释云原生应用程序的属性，考查云计算模型的特性，并讨论您应该何时以及为什么要迁移到云。我还将介绍一些云原生拓扑和体系结构的基本概念。图 1.1 显示了我将在本章中介绍的所有不同元素的概述，以定义和限定云原生系统。在本章的最后，您将开始使用 Spring 构建云原生应用程序并使用 Kubernetes 部署它们的旅程。</p>
+<p><img alt="" src="../assets/1.1.jpg" />
+<strong>图 1.1 云原生是一种利用云技术的应用程序开发方法。本章涵盖六个主要领域来定义什么是云原生：云计算、应用程序属性、实践、拓扑、体系结构和目标。</strong> <br/></p>
+<hr />
+<h2>1.8 总结</h2>
+<ul>
+<li>云是一种 IT 基础设施，以商品的形式提供计算、存储和网络资源。用户只为实际使用的资源付费。</li>
+<li>云原生应用程序是专为云端运行的应用而设计的高度分布式系统。</li>
+<li>云服务商以不同的抽象级别提供服务：基础设施即服务（IaaS）、容器即服务（CaaS）、平台即服务（PaaS）、功能即服务（FaaS）或软件即服务（SaaS）。</li>
+<li>云原生应用程序具有水平可扩展性、松散耦合性和高度内聚性，具有故障恢复能力、可管理性和可观察性。</li>
+<li>云原生开发由自动化、持续交付和 DevOps 支持。云原生是一种文化，支持不同角色之间的协作，以共同交付业务价值。</li>
+<li>现代企业采用云原生技术开发快速交付的软件，可根据需求动态缩放，且始终可用，在优化成本的同时具有故障恢复能力。</li>
+<li>容器可以用作计算单元来设计云原生系统。它们比虚拟机更轻量，并提供可移植性、不变性和灵活性。如：Docker。</li>
+<li>专用平台提供管理容器的服务，而无需直接处理底层。它们提供容器编排、集群管理、网络服务和调度。如：Kubernetes。</li>
+<li>无服务器模式是一种云服务商管理服务器和后端函数的模式，而开发人员只需关注业务逻辑。后端函数在每次使用时计费，以实现成本优化。如：Google Functions。</li>
+<li>微服务架构可以用于开发云原生应用程序，但并不是必须的。云原生与微服务不完全相同。</li>
+<li>要设计云原生应用程序，您可以使用 <code>基于服务</code> 的架构，其要素是：服务和交互。服务可以进一步分为：应用程序服务（无状态）和数据服务（有状态）。</li>
+</ul>
+<hr />
+<h1>第 2 章 云原生模式和技术</h1>
+<p>本章内容</p>
+<ul>
+<li>理解云原生应用程序的开发原则</li>
+<li>使用 Spring Boot 构建云原生应用程序</li>
+<li>使用 Docker 和 BuildPack 容器化应用程序</li>
+<li>使用 Kubernetes 将应用程序部署到云</li>
+<li>介绍本书中使用的模式和技术</li>
+</ul>
+<p>我们为云而设计应用程序的方式与传统方法不同。<code>十二要素（Twelve-Factor）</code> 方法被视为云原生应用程序的最佳实践和开发模式。我将在本章第一部分介绍这种方法论，本书后续章节将进行详细介绍。</p>
+<p>然后我们将构建一个简单的 Spring Boot 应用程序，并使用 Java、Docker 和 Kubernetes 运行它，如图 2.1 所示。在本书中，我将深入探讨这些主题，所以在开始的时候，如果有些东西不完全清楚，请不要担心。本章旨在让您熟悉在云环境中，从开发到生产的整个过程，也让您了解使用到的模式和技术。</p>
+<p><img alt="" src="../assets/2.1.jpg" />
+<strong>图 2.1 Spring 应用程序从 Java 到容器再到 Kubernetes 的过程。</strong></p>
+<p>最后，我将向您介绍基于 Spring 和 Kubernetes 的云原生项目，我们后续将会一章又一章地进行开发。我们会使用到在第一部分提到的这些云原生应用的属性和模式。</p>
+<hr />
+<h2>2.6 总结</h2>
+<ul>
+<li>构建云原生应用程序的良好起点是 <code>十五要素</code> 方法论。它确定了开发原则，以提供跨执行环境的最大可移植性，适合部署在云平台，方便扩展，保证开发和生产环境之间的一致性，并可实现持续交付。</li>
+<li>Spring 是一个套件，它提供了构建现代应用的所有常用功能。核心是 Spring 框架，提供的应用程序上下文，在整个生命周期中管理 bean 和属性。</li>
+<li>Spring Boot 为加快云原生开发奠定了基础。可快速构建生产就绪的应用程序，包括嵌入式服务器、自动配置、监控和容器化等功能。</li>
+<li>Docker 是一种创建容器的技术。我们将 Spring 应用程序封装为容器，可跨环境移植，并对其运行时依赖关系有更多的控制。</li>
+<li>容器镜像是轻量级的可执行包，其中包含了在内部运行应用程序所需的所有内容。Spring Boot 应用程序可以使用 Cloud Native Buildpacks 打包为镜像。</li>
+<li>通常在云原生系统中，您需要处理多个容器，管理如此复杂的系统需要一种方法。Kubernetes 提供了以下功能：协调、安排和管理容器。</li>
+<li>Kubernetes Pod 是最小的部署单位。Kubernetes Deployment 描述如何从容器镜像开始，将应用程序实例创建为 Pod。Kubernetes Service 允许您在集群外部公开应用程序端点。</li>
+</ul>
+<hr />
+<h1>第 3 章 进行云原生应用开发</h1>
+<hr />
+<h1>3.6 总结</h1>
+<hr />
+<h1>第 4 章 配置管理外部化</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 properties 和 profiles 配置 Spring</li>
+<li>使用 Spring Boot 应用外部配置</li>
+<li>使用 Spring Cloud Config Server 实现配置服务器</li>
+<li>使用 Spring Cloud Config Client 配置应用程序</li>
+</ul>
+<p>在上一章中，您构建了一个用于管理图书目录的 RESTful 应用程序。作为实现的一部分，您定义了一些数据来配置应用程序的某些方面（在文件中）。例如，Tomcat 线程池或连接超时时间。下一步可能是将应用程序部署到不同的环境：首先是测试环境，然后是预发环境，最后是生产。如果您需要每个环境的都有不同的 Tomcat 配置，如何做到这一点呢？</p>
+<p>传统的应用程序通常打包为一个应用包，包括源代码和一系列配置文件。包含不同环境的配置数据，并在运行时标记。这意味着您需要更新特定环境的配置数据时，都必须构建一个新的应用程序包。这一过程的一个改进是为每个环境创建不同的构建，但这意味着您无法保证在预发环境中运行的内容，在生产环境中也会以同样的方式运行，因为它们是不同的打包制品。</p>
+<p><code>配置（Configuration）</code>定义为在部署之间可能发生更改的一切（根据 <code>十五要素</code> 方法论），如凭据、资源处理程序和支持服务的 URL。根据部署位置的不同，同一应用程序将有不同的需求，并且很可能需要不同的配置。云原生应用程序的一个关键特性是，应用程序制品将在整个环境中保持不变。无论将其部署到哪个环境，都不会更改应用程序制品。</p>
+<p>您部署的每个版本都是构建和配置的组合。可以使用相同的构建部署到具有不同配置数据的不同环境，如图 4.1 所示。</p>
+<p><img alt="" src="../assets/4.1.jpg" />
+<strong>图 4.1 您部署的每个版本都是构建和配置的组合，每个环境都不同。</strong></p>
+<p>可能需要跨部署进行更改的任何内容，都应该是可配置的。例如您可能希望更改凭据以访问支持服务、功能标志和数据库资源或外部 API 的 URL，所有这些都取决于您正在部署应用程序的环境。云原生应用程序支持配置外部化，因此您可以替换它，而无需重新生成代码。关于凭据，它甚至更重要，关键是不要将它们与应用程序代码一起存储。无数的数据泄露，都因为向公开的存储库提交了凭据信息。确保您不会是他们中的一员。</p>
+<p>在 Spring 中，配置数据被抽象为 properties，以不同的方式定义键/值对，例如属性文件、JVM 系统属性和系统环境变量。本章介绍在云原生上下文中配置 Spring 应用程序的各个方面。我将介绍有关 Spring 如何处理配置的主要概念，包括 properties 和 profiles，以及如何使用 Spring Boot 应用外部化配置。然后，我将演示如何通过 Git 使用 Spring Cloud Config Server 设置配置服务存储库，作为存储配置数据的后端。最后，您将学习如何通过 Spring Cloud Config Client 访问 Config Server 来配置 Spring Boot 应用程序。</p>
+<p>到本章结束时，您将能够根据您的需要和配置数据的类型，使用不同的方法来配置您的云原生 Spring 应用程序。表 4.1 总结了本章介绍的三种主要策略，以定义云原生应用程序的配置数据。第 13 章将进一步扩展本文涵盖的主题，包括机密管理以及如何在 Kubernetes 中使用 ConfigMaps 和 Secrets。</p>
+<blockquote>
+<p>注意：本章示例的源代码可在 /Chapter04/04-begin 和 /Chapter04/04-end 文件中找到，包含最初和本章结束后的工程状态。（<a href="https://github.com/ThomasVitale/cloud-native-spring-in-action">github.com/ThomasVitale/cloud-native-spring-in-action</a>）</p>
+</blockquote>
+<p><strong>表 4.1 可以根据不同的策略配置云原生应用程序。根据配置数据类型和应用程序的要求，您可能会全部使用到它们。</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">配置策略</th>
+<th style="text-align: left;">特征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">随应用程序打包的属性文件</td>
+<td style="text-align: left;">· 可以作为应用程序支持的配置数据的规范。<br/> · 用于定义合理的默认值，主要面向开发环境。</td>
+</tr>
+<tr>
+<td style="text-align: left;">环境变量</td>
+<td style="text-align: left;">· 任何操作系统都支持环境变量，因此非常方便。<br/> · 大多数编程语言允许您访问环境变量。在 Java 中，可以使用 System.getenv() 方法来实现这一点。在 Spring 里依赖于 Environment 抽象类。<br/> · 用于定义配置数据，具体取决于部署应用程序的基础架构/平台，例如活动配置文件、主机名、服务名和端口号。</td>
+</tr>
+<tr>
+<td style="text-align: left;">配置服务</td>
+<td style="text-align: left;">· 提供配置数据持久化、审核和计量。<br/> · 允许使用加密或专用密钥管理机密库。<br/> · 用于定义特定于应用程序的配置数据，例如连接池、凭据、功能标志、线程池和指向第三方服务的 URL。</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1>4.4 总结</h1>
+<hr />
+<h1>第 5 章 云中的数据持久化和管理</h1>
+<p>本章内容：</p>
+<ul>
+<li>云原生系统的数据库</li>
+<li>使用 Spring Data JDBC 进行数据持久化</li>
+<li>使用 Spring 和 Testcontainers 测试数据持久化</li>
+<li>使用 Flyway 管理生产环境中的数据库</li>
+</ul>
+<p>在前面的章节中，我们构建了一个 RESTful 应用程序来管理图书目录。作为实现的一部分，我们定义了一些数据来配置应用程序的某些方面。现在，我们需要将这些数据持久化到数据库中。</p>
+<p>在本章中，我们将为 Catalog Service 应用程序添加数据持久化功能。首先了解云原生环境中的数据服务，然后使用 Spring Data JDBC 和 PostgreSQL 实现数据持久化，最后使用 Testcontainers 进行测试，使用 Flyway 管理数据库迁移。</p>
+<hr />
+<h2>5.3 使用 Spring 和 Testcontainers 测试数据持久化</h2>
+<p>在前面的章节中，我们通过针对容器中的 PostgreSQL 数据库进行开发，为应用程序添加了数据持久化功能，这与生产环境中使用的技术相同。这是迈向 15 要素方法论推荐的环境一致性的重要一步。保持所有环境尽可能相似可以提高项目的质量。</p>
+<p>数据源是环境差异的主要原因之一。在本地开发时使用内存数据库（如 H2 或 HSQL）是常见做法，但这会影响应用程序的可预测性和健壮性。即使所有关系型数据库都使用 SQL 语言，Spring Data JDBC 提供通用抽象，但每个供应商都有自己的方言和独特功能，因此在生产环境中使用与开发和测试相同的数据库至关重要。</p>
+<p>Docker 使在本地使用实际数据库设置和开发应用程序变得更容易，正如您在 PostgreSQL 中体验的那样。类似地，Testcontainers（一个用于测试的 Java 库）使在集成测试中使用后端服务作为容器变得简单。</p>
+<p>本节将展示如何使用 @DataJdbcTest 注解为数据持久化层编写切片测试，以及如何使用 @SpringBootTest 注解在集成测试中包含数据库。在两种情况下，都将依赖 Testcontainers 针对实际的 PostgreSQL 数据库运行自动化测试。</p>
+<h3>5.3.1 为 PostgreSQL 配置 Testcontainers</h3>
+<p>Testcontainers（https://testcontainers.org）是一个用于测试的 Java 库。它支持 JUnit，提供轻量级、一次性的容器，如数据库、消息代理和 Web 服务器。它非常适合实现与生产中使用的实际后端服务的集成测试。结果是更可靠和稳定的测试，从而带来更高质量的应用程序并有利于持续交付实践。</p>
+<p>您可以使用 Testcontainers 配置轻量级 PostgreSQL 容器，并在涉及数据持久化层的自动化测试中使用它。</p>
+<p>首先，需要在 Catalog Service 项目的 build.gradle 文件中添加 Testcontainers PostgreSQL 模块的依赖。添加新依赖后记得刷新或重新导入 Gradle 依赖。</p>
+<p><strong>代码清单 5.16 在 Catalog Service 中添加 Testcontainers 依赖</strong></p>
+<pre><code class="language-groovy">ext {
+    ...
+    set('testcontainersVersion', &quot;1.17.3&quot;)
+}
+
+dependencies {
+    ...
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+dependencyManagement {
+    imports {
+        ...
+        mavenBom &quot;org.testcontainers:testcontainers-bom:${testcontainersVersion}&quot;
+    }
+}
+</code></pre>
+<p>运行测试时，我们希望应用程序使用 Testcontainers 提供的 PostgreSQL 实例，而不是之前通过 spring.datasource.url 属性配置的实例。我们可以在 src/test/resources 下创建的新 application-integration.yml 文件中覆盖该值。启用 integration 配置文件时，此文件中定义的任何属性将优先于主配置文件中的属性。</p>
+<p>在 src/test/resources 中创建新的 application-integration.yml 文件，并添加以下配置。</p>
+<p><strong>代码清单 5.17 使用 Testcontainers 提供的 PostgreSQL 数据源</strong></p>
+<pre><code class="language-yaml">spring:
+  datasource:
+    url: jdbc:tc:postgresql:14.4:///
+</code></pre>
+<h3>5.3.2 使用 @DataJdbcTest 和 Testcontainers 测试数据持久化</h3>
+<p>Spring Boot 提供了一些测试切片，可以只加载应用程序的特定部分。@DataJdbcTest 注解会自动配置内存数据库、实体和仓库的扫描，以及 JDBC 相关的组件。默认情况下，它使用嵌入式数据库，但我们可以覆盖它以使用 Testcontainers。</p>
+<p>创建一个新的 DataPersistenceTests 类，并添加以下代码：</p>
+<p><strong>代码清单 5.18 使用 @DataJdbcTest 和 Testcontainers 测试数据持久化</strong></p>
+<pre><code class="language-java">package com.polarbookshop.catalogservice.data;
+
+import com.polarbookshop.catalogservice.domain.Book;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.data.jdbc.DataJdbcTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DataJdbcTest
+@Testcontainers
+@ActiveProfiles(&quot;integration&quot;)
+class DataPersistenceTests {
+
+    @Container
+    static PostgreSQLContainer&lt;?&gt; postgresql = new PostgreSQLContainer&lt;&gt;(&quot;postgres:14.4&quot;);
+
+    @Autowired
+    private BookRepository bookRepository;
+
+    @Test
+    void shouldCreateAndRetrieveBook() {
+        var book = Book.of(&quot;1234567891&quot;, &quot;Northern Lights&quot;, &quot;Lyra Silverstar&quot;, 9.90);
+        var savedBook = bookRepository.save(book);
+
+        var retrievedBook = bookRepository.findByIsbn(savedBook.isbn());
+        assertThat(retrievedBook).isPresent();
+        assertThat(retrievedBook.get().title()).isEqualTo(&quot;Northern Lights&quot;);
+    }
+}
+</code></pre>
+<h3>5.3.3 使用 @SpringBootTest 和 Testcontainers 进行集成测试</h3>
+<p>@SpringBootTest 注解加载完整的应用程序上下文，更适合测试应用程序的各个层如何协同工作。我们可以结合使用 @SpringBootTest 和 Testcontainers 来针对实际的 PostgreSQL 数据库运行集成测试。</p>
+<p><strong>代码清单 5.19 使用 @SpringBootTest 和 Testcontainers 进行集成测试</strong></p>
+<pre><code class="language-java">package com.polarbookshop.catalogservice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest
+@Testcontainers
+@ActiveProfiles(&quot;integration&quot;)
+class CatalogServiceApplicationTests {
+
+    @Container
+    static PostgreSQLContainer&lt;?&gt; postgresql = new PostgreSQLContainer&lt;&gt;(&quot;postgres:14.4&quot;);
+
+    @Autowired
+    private BookRepository bookRepository;
+
+    @Test
+    void contextLoads() {
+        assertThat(bookRepository).isNotNull();
+    }
+}
+</code></pre>
+<p>通过使用 Testcontainers，我们确保集成测试针对与生产环境相同的数据库技术运行，提高了测试的可靠性和应用程序的质量。</p>
+<hr />
+<h2>5.4 使用 Flyway 管理生产环境中的数据库</h2>
+<p>记录任何数据库更改是很好的做法，就像您通过版本控制管理应用程序源代码一样。您需要一种确定性和自动化的方式来推断数据库的状态、是否已应用特定更改、如何从头重新创建数据库以及如何以可控、可重复和可靠的方式迁移它。持续交付方法鼓励尽可能自动化，包括数据库管理。</p>
+<p>在 Java 生态系统中，最常用的跟踪、版本控制和部署数据库更改的两个工具是 Flyway（https://flywaydb.org）和 Liquibase（https://liquibase.org）。它们都与 Spring Boot 完全集成。本节将展示如何使用 Flyway。</p>
+<h3>5.4.1 理解 Flyway：数据库的版本控制</h3>
+<p>Flyway 是一个为数据库提供版本控制的工具。它为数据库状态的版本提供单一真相来源，并增量跟踪任何更改。它自动化更改，让您可以重现或回滚数据库的状态。Flyway 高度可靠，在集群环境中安全使用，并支持多种关系型数据库，包括 Amazon RDS、Azure Database 和 Google Cloud SQL 等云数据库。</p>
+<blockquote>
+<p>注意：本节将介绍 Flyway 提供的一些功能，但建议您查阅官方文档以发现此工具提供的所有强大功能（https://flywaydb.org）。</p>
+</blockquote>
+<p>Flyway 的核心是管理数据库更改。任何数据库更改都称为迁移，迁移可以是版本化的或可重复的。版本化迁移由唯一版本号标识，按顺序恰好应用一次。对于每个常规版本化迁移，您还可以提供可选的撤消迁移以恢复其效果（以防出现问题）。它们可用于创建、更改或删除关系对象（如模式、表、列和序列）或更正数据。另一方面，可重复迁移在其校验和更改时每次都会应用。它们可用于创建或更新视图、存储过程和包。</p>
+<p>两种类型的迁移都可以在标准 SQL 脚本（适用于 DDL 更改）或 Java 类（适用于 DML 更改，如数据迁移）中定义。Flyway 通过在首次运行时自动在数据库中创建的 flyway_schema_history 表来跟踪哪些迁移已应用。您可以将迁移想象为 Git 仓库中的提交，模式历史表包含随时间应用的所有提交列表（图 5.6）。</p>
+<p><img alt="" src="../../assets/ch05/5.1.png" />
+<strong>图 5.6 Flyway 迁移表示数据库更改，可以想象为 Git 仓库中的提交。</strong></p>
+<blockquote>
+<p>注意：使用 Flyway 的前提是您要管理的数据库和具有正确访问权限的用户都存在。一旦有了数据库和用户，Flyway 就可以为您管理数据库更改。您不应该使用 Flyway 来管理用户。</p>
+</blockquote>
+<p>您可以使用独立模式或将 Flyway 嵌入 Java 应用程序中。Spring Boot 为其提供自动配置，使将 Flyway 包含在应用程序中非常方便。与 Spring Boot 集成时，Flyway 将在 src/main/resources/db/migration 文件夹中搜索 SQL 迁移，在 src/main/java/db/migration 中搜索 Java 迁移。</p>
+<p>运行模式和数据迁移是第 2 章介绍的 15 要素方法论描述的管理过程之一。在这种情况下，采用的策略是将其嵌入应用程序本身。默认情况下，它在应用程序启动阶段激活。</p>
+<p>打开 Catalog Service 项目，在 build.gradle 文件中添加 Flyway 依赖。添加后记得刷新或重新导入 Gradle 依赖。</p>
+<p><strong>代码清单 5.20 在 Catalog Service 中添加 Flyway 依赖</strong></p>
+<pre><code class="language-groovy">dependencies {
+    ...
+    implementation 'org.flywaydb:flyway-core'
+}
+</code></pre>
+<h3>5.4.2 使用 Flyway 初始化数据库模式</h3>
+<p>您将应用的第一个数据库更改通常是初始化模式。到目前为止，我们一直依赖 Spring Boot 提供的内置数据源初始化功能，并提供包含要运行的 SQL 语句的 schema.sql 文件。现在我们可以使用 SQL Flyway 迁移来初始化模式。</p>
+<p>首先，删除 schema.sql 文件并从 Catalog Service 项目的 application.yml 文件中删除 spring.sql.init.mode 属性。</p>
+<p>接下来，创建 src/main/resources/db/migration 文件夹。这是 Flyway 默认搜索 SQL 迁移的地方。在文件夹内，创建 V1__Initial_schema.sql 文件，其中包含初始化 Catalog Service 应用程序所需的数据库模式的 SQL 语句。确保在版本号后输入两个下划线。</p>
+<p>Flyway 期望 SQL 迁移文件遵循特定的命名模式。常规版本化迁移应遵循以下结构：</p>
+<ul>
+<li>前缀 — V（版本化迁移）</li>
+<li>版本 — 使用点或下划线分隔为多个部分的版本号（例如 2.0.1）</li>
+<li>分隔符 — 两个下划线：__</li>
+<li>描述 — 用下划线分隔的单词</li>
+<li>后缀 — .sql</li>
+</ul>
+<p>在 V1__Initial_schema.sql 迁移脚本中，您可以包含创建 book 表的 SQL 指令，Spring Boot JDBC 将其映射到 Book 持久化实体。</p>
+<p><strong>代码清单 5.21 用于模式初始化的 Flyway 迁移脚本</strong></p>
+<pre><code class="language-sql">CREATE TABLE book (
+    id BIGSERIAL PRIMARY KEY NOT NULL,
+    author varchar(255) NOT NULL,
+    isbn varchar(255) UNIQUE NOT NULL,
+    price float8 NOT NULL,
+    title varchar(255) NOT NULL,
+    created_date timestamp NOT NULL,
+    last_modified_date timestamp NOT NULL,
+    version integer NOT NULL
+);
+</code></pre>
+<p>当您让 Flyway 管理数据库模式的更改时，您将获得版本控制的所有好处。现在您可以按照第 5.1.2 节提供的说明启动新的 PostgreSQL 容器（如果之前的容器仍在运行，使用 docker rm -fv polar-postgres 移除），运行应用程序（./gradlew bootRun），并验证一切正常工作。</p>
+<blockquote>
+<p>注意：在本书附带的仓库中，您可以找到直接查询 PostgreSQL 数据库和验证 Flyway 生成的模式和数据的有用命令（Chapter05/05-end/catalog-service/README.md）。</p>
+</blockquote>
+<p>您的自动化测试也将使用 Flyway。继续运行它们；它们应该全部成功。完成后，将更改推送到远程 Git 仓库，并从 GitHub Actions 检查提交阶段结果。它们也应该成功。最后，停止应用程序执行（Ctrl-C）和 PostgreSQL 容器（docker rm -fv polar-postgres）。</p>
+<h3>5.4.3 使用 Flyway 演进数据库</h3>
+<p>随着应用程序的发展，数据库模式也需要演进。Flyway 使这个过程变得简单且可靠。</p>
+<p>假设您需要向 book 表添加一个新字段来存储图书的描述。创建一个新的迁移文件 V2__Add_description_column.sql：</p>
+<p><strong>代码清单 5.22 添加新列的 Flyway 迁移脚本</strong></p>
+<pre><code class="language-sql">ALTER TABLE book ADD COLUMN description varchar(2000);
+</code></pre>
+<p>当应用程序启动时，Flyway 将检测到新的迁移文件并自动应用它。flyway_schema_history 表将记录此迁移已应用，确保它不会再次运行。</p>
+<p>Flyway 的优势在于：</p>
+<ul>
+<li><strong>版本控制</strong> — 每个更改都被跟踪和版本化</li>
+<li><strong>可重复</strong> — 迁移可以在任何环境中以相同的方式运行</li>
+<li><strong>可回滚</strong> — 如果出现问题，可以创建撤消迁移</li>
+<li><strong>团队协作</strong> — 多个开发人员可以安全地处理数据库更改</li>
+</ul>
+<p>通过使用 Flyway，您确保数据库模式与应用程序代码一起版本化，使部署更可靠且更易于管理。</p>
+<hr />
+<h1>第 6 章 Spring Boot 容器化</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 Docker 处理容器镜像</li>
+<li>将 Spring Boot 应用程序打包为容器镜像</li>
+<li>使用 Docker Compose 管理 Spring Boot 容器</li>
+<li>部署流水线：打包和发布</li>
+</ul>
+<p>到目前为止，我们已经开发了一个 Catalog Service 应用程序，它暴露 REST API 并通过运行在容器中的 PostgreSQL 数据库持久化数据。我们即将把 Polar Bookshop 系统的第一个组件部署到 Kubernetes 集群。但在此之前，您需要学习如何将 Spring Boot 应用程序打包为容器镜像并管理其生命周期。</p>
+<p>本章将教您容器镜像的基本特征以及如何构建一个。我们将使用 Docker 来处理容器，但您也可以使用任何其他兼容开放容器倡议（OCI）标准的容器运行时。在本书的剩余部分中，当我提到容器镜像或 Docker 镜像时，我指的是兼容 OCI 镜像规范的镜像。</p>
+<p>在学习过程中，我将与您分享关于为生产构建容器镜像的几个注意事项，例如安全性和性能。我们将探索两种可能性：Dockerfile 和 Cloud Native Buildpacks。</p>
+<p>当我们开始处理多个容器时，Docker CLI 效率不高。相反，我们将使用 Docker Compose 来管理多个容器及其生命周期。</p>
+<p>最后，我们将继续第 3 章开始的部署流水线工作。我将向您展示如何向提交阶段添加新步骤，以自动将容器镜像打包和发布到 GitHub Container Registry。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter06/06-begin 和 Chapter06/06-end 文件夹中，包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>6.4 部署流水线：打包和发布</h2>
+<p>在第 3 章中，我们开始实现部署流水线以支持 Polar Bookshop 项目的持续交付。持续交付是一种整体工程方法，用于快速、可靠、安全地交付高质量软件。部署流水线是自动化从代码提交到可发布软件整个过程的主要模式。</p>
+<h3>6.4.1 在提交阶段构建发布候选</h3>
+<p>运行静态代码分析、编译、单元测试和集成测试后，是时候将应用程序打包为可执行工件并发布了。在我们的例子中，可执行工件是容器镜像，我们将发布到容器注册表。</p>
+<p>持续交付的一个重要思想是您应该只构建一次工件。在提交阶段结束时，我们将生成一个容器镜像，可以在部署流水线的任何后续阶段中重用，直到生产环境。</p>
+<h3>6.4.2 使用 GitHub Actions 发布容器镜像</h3>
+<p>GitHub Actions 是一个引擎，您可以直接从 GitHub 仓库自动化软件工作流。工作流定义通常存储在 GitHub 仓库根目录的 .github/workflows 目录中。</p>
+<p>在第 3 章中，我们开始为 Catalog Service 开发实现部署流水线提交阶段的工作流。现在让我们继续实现，添加更多步骤来打包和发布应用程序。</p>
+<p>打开 Catalog Service 项目的提交阶段工作流定义（.github/workflows/commit-stage.yml），添加打包和发布步骤。</p>
+<p><strong>代码清单 6.9 配置发布候选信息</strong></p>
+<pre><code class="language-yaml">name: Commit Stage
+
+on: push
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: &lt;your_github_username&gt;/catalog-service
+  VERSION: latest
+
+jobs:
+  ...
+</code></pre>
+<p><strong>代码清单 6.10 使用 Buildpacks 将应用程序打包为 OCI 镜像</strong></p>
+<pre><code class="language-yaml">  package-and-publish:
+    name: Package and Publish
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build container image
+        run: ./gradlew bootBuildImage
+      - name: Log in to GitHub Container Registry
+        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Tag container image
+        run: docker tag $IMAGE_NAME:latest $REGISTRY/$IMAGE_NAME:$VERSION
+      - name: Publish container image
+        run: docker push $REGISTRY/$IMAGE_NAME:$VERSION
+</code></pre>
+<p>通过这个工作流，每次推送到 main 分支时，应用程序将自动构建、测试、打包为容器镜像并发布到 GitHub Container Registry。</p>
+<p>至此，第 6 章翻译完成。我们学习了如何使用 Docker 处理容器镜像、如何将 Spring Boot 应用程序打包为容器镜像、如何使用 Docker Compose 管理多个容器，以及如何完善部署流水线。</p>
+<hr />
+<h1>第 7 章 Kubernetes 基础</h1>
+<p>本章内容：</p>
+<ul>
+<li>从 Docker 过渡到 Kubernetes</li>
+<li>Spring Boot 的 Kubernetes Deployment</li>
+<li>服务发现和负载均衡</li>
+<li>部署 Polar Bookshop 到 Kubernetes</li>
+</ul>
+<p>本章将 Kubernetes 引入您的工作流程，以解决仅 Docker 无法解决的问题。</p>
+<p>作为开发人员，配置和管理 Kubernetes 集群不是您的工作。您可能会使用云提供商（如 Amazon、Microsoft 或 Google）提供的托管服务，或由组织内专业团队（通常称为平台团队）管理的本地服务。目前，您将使用 minikube 提供的本地 Kubernetes 集群。在本书后面，您将使用云提供商提供的托管 Kubernetes 服务。</p>
+<p>在我们的日常开发工作中，我们不希望花太多时间在基础设施问题上，但了解基础知识至关重要。Kubernetes 已成为事实上的编排工具和讨论容器化部署的通用语言。</p>
+<p>本章将带您了解 Kubernetes 的主要功能，并教您如何为 Spring Boot 应用程序创建和管理 Pod、Deployment 和 Service。在此过程中，您将为应用程序启用优雅关闭，学习如何扩展它们，以及如何使用 Kubernetes 提供的服务发现和负载均衡功能。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter07/07-begin 和 Chapter07/07-end 文件夹中，包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>7.3 服务发现和负载均衡</h2>
+<p>在微服务架构中，服务需要能够找到彼此。Kubernetes 提供了内置的服务发现和负载均衡机制。</p>
+<h3>7.3.1 理解服务发现和负载均衡</h3>
+<p><strong>服务发现</strong> — 允许服务找到其他服务的网络位置。在 Kubernetes 中，Pod 是短暂的，可以随时创建和销毁。服务发现允许服务通过稳定的服务名称访问其他 Pod，而不需要知道具体的 IP 地址。</p>
+<p><strong>负载均衡</strong> — 将网络流量分发到多个 Pod，以确保高可用性和可扩展性。Kubernetes Service 自动在后端 Pod 之间进行负载均衡。</p>
+<h3>7.3.2 客户端服务发现和负载均衡</h3>
+<p>客户端服务发现意味着客户端负责查询服务注册表并选择可用的后端实例。在 Kubernetes 中，这可以通过环境变量或 DNS 实现。</p>
+<h3>7.3.3 服务端服务发现和负载均衡</h3>
+<p>服务端服务发现意味着客户端向负载均衡器发送请求，负载均衡器查询服务注册表并将请求转发到可用的后端实例。Kubernetes Service 就是这种模式的实现。</p>
+<h3>7.3.4 使用 Kubernetes Service 暴露 Spring Boot 应用程序</h3>
+<p>Service 是 Kubernetes 中用于暴露应用程序的对象。它为一组 Pod 提供稳定的网络端点。</p>
+<p>Service 类型：</p>
+<ul>
+<li><strong>ClusterIP</strong> — 仅在集群内部可访问（默认）</li>
+<li><strong>NodePort</strong> — 在每个节点上暴露端口，可从外部访问</li>
+<li><strong>LoadBalancer</strong> — 使用云提供商的负载均衡器暴露服务</li>
+</ul>
+<p>Service YAML 示例：</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: catalog-service
+  ports:
+  - port: 9001
+    targetPort: 9001
+</code></pre>
+<p>使用 kubectl 创建 Service：</p>
+<pre><code class="language-bash">$ kubectl apply -f catalog-service-service.yaml
+</code></pre>
+<p>查看 Service 状态：</p>
+<pre><code class="language-bash">$ kubectl get services
+</code></pre>
+<p>使用 minikube 获取服务 URL：</p>
+<pre><code class="language-bash">$ minikube service catalog-service --url
+</code></pre>
+<p>通过服务名称，集群内的其他服务可以访问 Catalog Service：</p>
+<pre><code>http://catalog-service:9001
+</code></pre>
+<p>这就是为什么在配置数据源 URL 时，我们可以使用 PostgreSQL 容器名称（polar-postgres）而不是 IP 地址的原因。</p>
+<hr />
+<h2>7.4 将 Polar Bookshop 部署到 Kubernetes</h2>
+<p>在本节中，我们将把 Polar Bookshop 系统的所有组件部署到本地 Kubernetes 集群。</p>
+<h3>7.4.1 部署所有服务</h3>
+<p>使用 Docker Compose 文件生成 Kubernetes 清单，或者手动创建 Deployment 和 Service 清单。</p>
+<p>部署顺序：</p>
+<ol>
+<li><strong>Config Server</strong> — 配置服务必须先运行，因为其他服务依赖它</li>
+<li><strong>PostgreSQL</strong> — 数据库服务</li>
+<li><strong>Catalog Service</strong> — 图书目录服务</li>
+<li><strong>其他微服务</strong> — 根据依赖关系依次部署</li>
+</ol>
+<p>使用 kubectl 部署所有服务：</p>
+<pre><code class="language-bash">$ kubectl apply -f kubernetes/
+</code></pre>
+<p>查看所有部署的 Pod：</p>
+<pre><code class="language-bash">$ kubectl get pods -w
+</code></pre>
+<p>查看所有服务：</p>
+<pre><code class="language-bash">$ kubectl get services
+</code></pre>
+<h3>7.4.2 验证部署</h3>
+<p>检查所有 Pod 是否正在运行：</p>
+<pre><code class="language-bash">$ kubectl get pods
+
+NAME                                    READY   STATUS    RESTARTS   AGE
+catalog-service-6d4b8c7f9d-xxxxx       1/1     Running   0          2m
+config-server-5f7b8c9d6e-xxxxx         1/1     Running   0          3m
+polar-postgres-677b76bfc5-lkkqn        1/1     Running   0          5m
+</code></pre>
+<p>测试服务端点：</p>
+<pre><code class="language-bash">$ minikube service catalog-service --url
+http://192.168.49.2:30001
+
+$ curl http://192.168.49.2:30001/books
+</code></pre>
+<h3>7.4.3 扩展服务</h3>
+<p>Kubernetes 可以轻松扩展服务的副本数：</p>
+<pre><code class="language-bash">$ kubectl scale deployment catalog-service --replicas=3
+</code></pre>
+<p>查看扩展后的 Pod：</p>
+<pre><code class="language-bash">$ kubectl get pods -l app=catalog-service
+
+NAME                                    READY   STATUS    RESTARTS   AGE
+catalog-service-6d4b8c7f9d-xxxxx       1/1     Running   0          5m
+catalog-service-6d4b8c7f9d-yyyyy       1/1     Running   0          10s
+catalog-service-6d4b8c7f9d-zzzzz       1/1     Running   0          10s
+</code></pre>
+<h3>7.4.4 更新服务</h3>
+<p>进行滚动更新：</p>
+<pre><code class="language-bash">$ kubectl set image deployment/catalog-service catalog-service=ghcr.io/your-username/catalog-service:new-version
+</code></pre>
+<p>查看更新状态：</p>
+<pre><code class="language-bash">$ kubectl rollout status deployment/catalog-service
+</code></pre>
+<p>如果更新有问题，回滚：</p>
+<pre><code class="language-bash">$ kubectl rollout undo deployment/catalog-service
+</code></pre>
+<h3>7.4.5 清理资源</h3>
+<p>删除所有部署的资源：</p>
+<pre><code class="language-bash">$ kubectl delete -f kubernetes/
+</code></pre>
+<p>或删除整个命名空间：</p>
+<pre><code class="language-bash">$ kubectl delete namespace polar
+</code></pre>
+<p>至此，第 7 章翻译完成。我们学习了 Kubernetes 的基础知识，包括 Pod、Deployment 和 Service，以及如何将 Spring Boot 应用程序部署到 Kubernetes 集群。</p>
+<hr />
+<h1>第 8 章 响应式 Spring：韧性和可扩展性</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 Reactor 和 Spring 的异步非阻塞架构</li>
+<li>使用 Spring WebFlux 构建响应式 REST API</li>
+<li>使用 Spring Data R2DBC 进行响应式数据持久化</li>
+<li>使用 resilience4j 实现弹性模式</li>
+</ul>
+<p>另一个重要的系统功能是购买图书的可能性。在本章中，您将开始处理 Order Service 应用程序。这个新组件不仅与数据库交互，还与 Catalog Service 交互。当您的应用程序大量依赖 I/O 操作（如数据库调用或与 HTTP 请求/响应通信等其他服务的交互）时，Catalog Service 中使用的每请求一线程模型开始暴露其技术限制。</p>
+<p>响应式应用程序以异步和非阻塞方式运行，这意味着计算资源被更有效地使用。这在云中是一个巨大的优势，因为您按使用付费。当线程向后端服务发送调用时，它不会空闲等待，而是继续执行其他操作。这消除了线程数和并发请求数之间的线性依赖关系，导致更具可扩展性的应用程序。</p>
+<p>本章将重点介绍使用响应式范式为云构建有韧性、可扩展和高效的应用程序。首先，我将介绍事件循环模型以及 Reactive Streams、Project Reactor 和 Spring 响应式栈的主要特性。然后您将使用 Spring WebFlux 和 Spring Data R2DBC 构建响应式 Order Service 应用程序。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter08/08-begin 和 Chapter08/08-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>8.1 使用 Reactor 和 Spring 的异步非阻塞架构</h2>
+<p>响应式宣言（www.reactivemanifesto.org）将响应式系统描述为响应式的、有韧性的、弹性的和消息驱动的。其构建松散耦合、可扩展、有韧性和经济高效的应用程序的使命与我们对云原生的定义完全兼容。</p>
+<h3>8.1.1 从每请求一线程到事件循环</h3>
+<p>在非响应式应用程序中，每个请求分配一个线程。在返回响应之前，线程不会用于其他任何事情。这就是每请求一线程模型。当请求处理涉及 I/O 等密集操作时，线程将阻塞，直到这些操作完成。</p>
+<p>响应式应用程序在设计上更具可扩展性和效率。在响应式应用程序中处理请求不涉及专门分配给定线程——请求基于事件异步完成。这种称为事件循环的范式不会对应用程序的可扩展性设置硬性约束。</p>
+<h3>8.1.2 Project Reactor：使用 Mono 和 Flux 的响应式流</h3>
+<p>响应式 Spring 基于 Project Reactor，一个用于在 JVM 上构建异步、非阻塞应用程序的框架。Reactor 是 Reactive Streams 规范的实现。</p>
+<p>Reactor 中的两个核心类型：</p>
+<ul>
+<li><strong>Mono<T></strong> — 表示 0 或 1 个元素的异步序列</li>
+<li><strong>Flux<T></strong> — 表示 0 到 N 个元素的异步序列</li>
+</ul>
+<h3>8.1.3 Spring 响应式栈</h3>
+<p>Spring 框架提供了全面的响应式支持：</p>
+<ul>
+<li><strong>Spring WebFlux</strong> — 响应式 Web 框架，替代 Spring MVC</li>
+<li><strong>Spring Data R2DBC</strong> — 响应式数据库访问</li>
+<li><strong>Spring Security Reactive</strong> — 响应式安全</li>
+<li><strong>Spring Cloud Gateway</strong> — 响应式 API 网关</li>
+</ul>
+<hr />
+<h2>8.2 使用 WebFlux 构建响应式 REST API</h2>
+<p>Spring WebFlux 是 Spring 框架的响应式 Web 模块，提供与 Spring MVC 类似的功能，但使用非阻塞方式处理请求。</p>
+<h3>8.2.1 使用 Spring WebFlux</h3>
+<p>WebFlux 支持两种编程模型：</p>
+<ol>
+<li><strong>注解驱动</strong> — 类似 Spring MVC 的 @RestController</li>
+<li><strong>函数式端点</strong> — 使用 RouterFunction 和 HandlerFunction</li>
+</ol>
+<h3>8.2.2 编写响应式控制器和客户端</h3>
+<p>响应式控制器示例：</p>
+<pre><code class="language-java">@RestController
+@RequestMapping(&quot;/orders&quot;)
+public class OrderController {
+
+    private final OrderService orderService;
+
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
+
+    @GetMapping(&quot;/{id}&quot;)
+    public Mono&lt;Order&gt; getOrder(@PathVariable Long id) {
+        return orderService.getOrderById(id);
+    }
+
+    @PostMapping
+    public Mono&lt;Order&gt; createOrder(@RequestBody Order order) {
+        return orderService.createOrder(order);
+    }
+}
+</code></pre>
+<h3>8.2.3 使用 WebClient 消费 REST API</h3>
+<p>WebClient 是 Spring WebFlux 提供的响应式 HTTP 客户端：</p>
+<pre><code class="language-java">@Service
+public class CatalogClient {
+
+    private final WebClient webClient;
+
+    public CatalogClient(WebClient.Builder builder) {
+        this.webClient = builder
+            .baseUrl(&quot;http://catalog-service&quot;)
+            .build();
+    }
+
+    public Mono&lt;Book&gt; getBookByIsbn(String isbn) {
+        return webClient.get()
+            .uri(&quot;/books/{isbn}&quot;, isbn)
+            .retrieve()
+            .bodyToMono(Book.class);
+    }
+}
+</code></pre>
+<hr />
+<h2>8.3 使用 R2DBC 进行响应式数据持久化</h2>
+<p>Spring Data R2DBC 提供了响应式方式访问关系型数据库的能力，基于 Reactive Relational Database Connectivity (R2DBC) 规范。</p>
+<h3>8.3.1 使用 Spring Data R2DBC</h3>
+<p>首先添加依赖：</p>
+<pre><code class="language-groovy">dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
+    runtimeOnly 'io.r2dbc:r2dbc-postgresql'
+}
+</code></pre>
+<p>配置 R2DBC：</p>
+<pre><code class="language-yaml">spring:
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/polardb_catalog
+    username: user
+    password: password
+</code></pre>
+<h3>8.3.2 定义响应式仓库</h3>
+<pre><code class="language-java">public interface OrderRepository extends ReactiveCrudRepository&lt;Order, Long&gt; {
+    Flux&lt;Order&gt; findByCustomerEmail(String email);
+}
+</code></pre>
+<h3>8.3.3 使用响应式事务</h3>
+<pre><code class="language-java">@Service
+public class OrderService {
+
+    private final OrderRepository orderRepository;
+    private final BookClient bookClient;
+
+    @Transactional
+    public Mono&lt;Order&gt; createOrder(Order order) {
+        return bookClient.getBookByIsbn(order.getIsbn())
+            .flatMap(book -&gt; {
+                order.setBookTitle(book.getTitle());
+                order.setBookPrice(book.getPrice());
+                return orderRepository.save(order);
+            });
+    }
+}
+</code></pre>
+<hr />
+<h2>8.4 实现弹性模式</h2>
+<p>在分布式系统中，服务之间的调用可能失败。为了构建有韧性的应用程序，我们需要实现各种弹性模式。</p>
+<h3>8.4.1 使用 Resilience4j</h3>
+<p>Resilience4j 是一个轻量级容错库，提供以下模式：</p>
+<ul>
+<li><strong>重试（Retry）</strong> — 自动重试失败的操作</li>
+<li><strong>断路器（Circuit Breaker）</strong> — 当失败率超过阈值时停止调用</li>
+<li><strong>限流（Rate Limiter）</strong> — 限制请求速率</li>
+<li><strong>隔离（Bulkhead）</strong> — 隔离依赖项以防止级联故障</li>
+</ul>
+<h3>8.4.2 实现重试</h3>
+<pre><code class="language-java">@Service
+public class CatalogClient {
+
+    private final WebClient webClient;
+
+    public Mono&lt;Book&gt; getBookByIsbn(String isbn) {
+        return webClient.get()
+            .uri(&quot;/books/{isbn}&quot;, isbn)
+            .retrieve()
+            .bodyToMono(Book.class)
+            .retry(3);
+    }
+}
+</code></pre>
+<h3>8.4.3 实现断路器</h3>
+<pre><code class="language-java">@Service
+public class CatalogClient {
+
+    public Mono&lt;Book&gt; getBookByIsbn(String isbn) {
+        return webClient.get()
+            .uri(&quot;/books/{isbn}&quot;, isbn)
+            .retrieve()
+            .bodyToMono(Book.class)
+            .transformDeferred(CircuitBreakerOperator.of(&quot;catalogService&quot;));
+    }
+}
+</code></pre>
+<h3>8.4.4 实现超时</h3>
+<pre><code class="language-java">@Service
+public class CatalogClient {
+
+    public Mono&lt;Book&gt; getBookByIsbn(String isbn) {
+        return webClient.get()
+            .uri(&quot;/books/{isbn}&quot;, isbn)
+            .retrieve()
+            .bodyToMono(Book.class)
+            .timeout(Duration.ofSeconds(3));
+    }
+}
+</code></pre>
+<hr />
+<h1>第 9 章 API 网关和断路器</h1>
+<p>本章内容：</p>
+<ul>
+<li>边缘服务器和 Spring Cloud Gateway</li>
+<li>使用 Spring Cloud Gateway 构建 API 网关</li>
+<li>使用 Resilience4j 实现断路器模式</li>
+<li>实现重试、超时和限流</li>
+</ul>
+<p>由于 API 网关是系统的入口点，它也是处理横切关注点（如安全性、监控和韧性）的绝佳位置。边缘服务器是系统边缘的应用程序，实现 API 网关和横切关注点等方面。</p>
+<p>您可以配置断路器以防止调用下游服务时的级联故障。可以为所有对内部服务的调用定义重试和超时。可以控制入口流量并执行配额策略。还可以在边缘实现身份验证和授权，并将令牌传递给下游服务。</p>
+<p>Spring Cloud Gateway 大大简化了构建边缘服务的过程，专注于简单性和生产力。由于它基于响应式栈，它可以高效扩展以处理系统边缘自然发生的高工作负载。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter09/09-begin 和 Chapter09/09-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>9.1 边缘服务器和 Spring Cloud Gateway</h2>
+<p>边缘服务器是系统边缘的应用程序，实现 API 网关和横切关注点等功能。Spring Cloud Gateway 大大简化了构建边缘服务的过程。</p>
+<h3>9.1.1 Spring Cloud Gateway 入门</h3>
+<p>Spring Cloud Gateway 基于 Spring Boot 和 Spring WebFlux，提供了一种简单的方式来路由到 API。它旨在提供一种简单而有效的方式来路由到 API，并为它们提供横切关注点，例如安全性、监控指标和弹性。</p>
+<p>添加依赖：</p>
+<pre><code class="language-groovy">dependencies {
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
+}
+</code></pre>
+<h3>9.1.2 定义路由和谓词</h3>
+<p>Spring Cloud Gateway 提供三个主要构建块：</p>
+<ul>
+<li><strong>路由（Route）</strong> — 由唯一 ID、谓词集合、URI 和过滤器集合标识</li>
+<li><strong>谓词（Predicate）</strong> — 匹配 HTTP 请求的任何内容，包括路径、主机、头、查询参数、cookie 和主体</li>
+<li><strong>过滤器（Filter）</strong> — 在转发请求之前或之后修改 HTTP 请求或响应</li>
+</ul>
+<p>配置路由示例：</p>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      routes:
+        - id: catalog-route
+          uri: ${CATALOG_SERVICE_URL:http://localhost:9001}/books
+          predicates:
+            - Path=/books/**
+        - id: order-route
+          uri: ${ORDER_SERVICE_URL:http://localhost:9002}/orders
+          predicates:
+            - Path=/orders/**
+</code></pre>
+<h3>9.1.3 使用过滤器</h3>
+<p>过滤器可以在请求转发到下游服务之前或之后修改请求。Spring Cloud Gateway 提供了许多内置过滤器：</p>
+<ul>
+<li><strong>AddRequestHeader</strong> — 添加请求头</li>
+<li><strong>AddResponseHeader</strong> — 添加响应头</li>
+<li><strong>RewritePath</strong> — 重写请求路径</li>
+<li><strong>Retry</strong> — 重试失败的请求</li>
+<li><strong>CircuitBreaker</strong> — 集成断路器</li>
+</ul>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      routes:
+        - id: catalog-route
+          uri: http://localhost:9001
+          predicates:
+            - Path=/books/**
+          filters:
+            - AddRequestHeader=X-Source, gateway
+            - StripPrefix=1
+</code></pre>
+<hr />
+<h2>9.2 使用 Circuit Breaker 和 Resilience4j 实现容错</h2>
+<p>在分布式系统中，服务之间的调用可能会失败。为了防止级联故障，我们需要实现容错模式。</p>
+<h3>9.2.1 理解断路器模式</h3>
+<p>断路器模式类似于电路断路器：当失败率超过阈值时，断路器打开，阻止进一步调用，从而保护下游服务和系统资源。</p>
+<p>断路器有三种状态：</p>
+<ul>
+<li><strong>关闭（Closed）</strong> — 正常状态，请求正常通过</li>
+<li><strong>打开（Open）</strong> — 故障状态，所有请求立即失败</li>
+<li><strong>半开（Half-Open）</strong> — 恢复状态，允许部分请求通过以测试服务是否恢复</li>
+</ul>
+<h3>9.2.2 配置断路器</h3>
+<p>在 Gateway 中配置断路器：</p>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      routes:
+        - id: catalog-route
+          uri: http://localhost:9001
+          predicates:
+            - Path=/books/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: catalogService
+                fallbackUri: forward:/fallback/catalog
+</code></pre>
+<p>配置 Resilience4j 断路器：</p>
+<pre><code class="language-yaml">resilience4j:
+  circuitbreaker:
+    instances:
+      catalogService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+</code></pre>
+<h3>9.2.3 实现重试</h3>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      routes:
+        - id: catalog-route
+          uri: http://localhost:9001
+          predicates:
+            - Path=/books/**
+          filters:
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY
+                methods: GET
+</code></pre>
+<h3>9.2.4 实现超时</h3>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 10s
+</code></pre>
+<hr />
+<h2>9.3 使用 Spring Cloud Gateway 和 Redis 实现请求限流</h2>
+<p>限流是一种控制应用程序资源使用的技术，可以防止系统过载并确保公平使用。</p>
+<h3>9.3.1 理解限流</h3>
+<p>限流可以基于多种因素：</p>
+<ul>
+<li><strong>每秒请求数（RPS）</strong> — 限制每秒处理的请求数</li>
+<li><strong>并发请求数</strong> — 限制同时处理的请求数</li>
+<li><strong>基于用户</strong> — 不同用户有不同的限制</li>
+<li><strong>基于 IP</strong> — 基于客户端 IP 地址限制</li>
+</ul>
+<h3>9.3.2 配置 Redis 限流</h3>
+<p>Spring Cloud Gateway 提供了 RequestRateLimiter 过滤器，使用 Redis 作为后端存储：</p>
+<pre><code class="language-yaml">spring:
+  cloud:
+    gateway:
+      routes:
+        - id: catalog-route
+          uri: http://localhost:9001
+          predicates:
+            - Path=/books/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                key-resolver: &quot;#{@userKeyResolver}&quot;
+</code></pre>
+<h3>9.3.3 自定义限流键</h3>
+<pre><code class="language-java">@Configuration
+public class RateLimitConfig {
+
+    @Bean
+    public KeyResolver userKeyResolver() {
+        return exchange -&gt; Mono.just(
+            exchange.getRequest().getPath().toString()
+        );
+    }
+}
+</code></pre>
+<hr />
+<h2>9.4 使用 Redis 进行分布式会话管理</h2>
+<p>在微服务架构中，会话管理是一个挑战。当请求被路由到不同的服务实例时，会话数据需要在所有实例之间共享。</p>
+<h3>9.4.1 配置 Spring Session</h3>
+<p>Spring Session 提供了管理用户会话信息的 API 和实现。它可以将会话存储在 Redis、数据库或其他存储中。</p>
+<p>添加依赖：</p>
+<pre><code class="language-groovy">dependencies {
+    implementation 'org.springframework.session:spring-session-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+}
+</code></pre>
+<p>配置 Redis 会话：</p>
+<pre><code class="language-yaml">spring:
+  session:
+    store-type: redis
+    timeout: 30m
+  redis:
+    host: localhost
+    port: 6379
+</code></pre>
+<h3>9.4.2 在 Edge Service 中使用分布式会话</h3>
+<pre><code class="language-java">@Configuration
+@EnableRedisHttpSession(maxInactiveIntervalInSeconds = 1800)
+public class SessionConfig {
+}
+</code></pre>
+<p>这样，无论请求被路由到哪个服务实例，会话数据都可以从 Redis 中获取。</p>
+<hr />
+<h2>9.5 使用 Kubernetes Ingress 管理外部访问</h2>
+<p>Kubernetes Ingress 提供了从集群外部访问集群内服务的 HTTP 和 HTTPS 路由。</p>
+<h3>9.5.1 配置 Ingress</h3>
+<p>Ingress 配置示例：</p>
+<pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: polar-bookshop-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: polar-bookshop.local
+      http:
+        paths:
+          - path: /books
+            pathType: Prefix
+            backend:
+              service:
+                name: edge-service
+                port:
+                  number: 9000
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: edge-service
+                port:
+                  number: 9000
+</code></pre>
+<h3>9.5.2 配置 TLS</h3>
+<pre><code class="language-yaml">apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: polar-bookshop-ingress-tls
+spec:
+  tls:
+    - hosts:
+        - polar-bookshop.local
+      secretName: polar-bookshop-tls
+  rules:
+    - host: polar-bookshop.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: edge-service
+                port:
+                  number: 9000
+</code></pre>
+<p>通过 Ingress，您可以统一管理外部访问，配置 SSL/TLS 终止，以及基于主机名或路径路由流量。</p>
+<hr />
+<h1>第 10 章 事件驱动应用和函数</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 Spring Cloud Stream 实现事件驱动架构</li>
+<li>使用 Spring Cloud Function 构建函数式应用</li>
+<li>与 Apache Kafka 和 RabbitMQ 集成</li>
+<li>实现事件溯源模式</li>
+</ul>
+<p>事件驱动架构是一种软件设计模式，其中系统的组件通过产生、消费和响应事件来进行通信。这种解耦的通信方式使系统更具可扩展性、弹性和可维护性。</p>
+<p>Spring Cloud Stream 是一个构建事件驱动微服务的框架，它简化了与消息代理（如 Apache Kafka 和 RabbitMQ）的集成。</p>
+<p>Spring Cloud Function 允许您以函数式风格编写业务逻辑，并将其部署到各种平台。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter10/10-begin 和 Chapter10/10-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>10.1 事件驱动架构</h2>
+<p>事件是一个发生的事情。它是系统中发生的相关内容，如状态变化，可能有多种事件来源。当事件发生时，相关方可以收到通知。事件通知通常通过消息完成，消息是事件的数据表示。</p>
+<p>在事件驱动架构中，我们识别事件生产者和事件消费者。生产者是检测事件并发送通知的组件。消费者是当特定事件发生时被通知的组件。</p>
+<p>生产者和消费者彼此不知道对方，独立工作。生产者通过将消息发布到由事件代理操作的通道来发送事件通知，事件代理负责收集和路由消息到消费者。</p>
+<h3>10.1.1 理解事件驱动模型</h3>
+<p>事件驱动架构可以基于两种主要模型：</p>
+<ul>
+<li>
+<p><strong>发布/订阅（pub/sub）</strong> — 此模型基于订阅。生产者发布事件，这些事件被发送给所有订阅者进行消费。事件被接收后无法重放，因此新加入的消费者将无法获取过去的事件。</p>
+</li>
+<li>
+<p><strong>事件流</strong> — 在此模型中，事件被写入日志。生产者在事件发生时发布事件，所有事件按顺序存储。消费者不订阅它们，但可以从事件流的任何部分读取。在此模型中，事件可以重放。客户端可以随时加入并接收所有过去的事件。</p>
+</li>
+</ul>
+<h3>10.1.2 使用 pub/sub 模型</h3>
+<p>在 Polar Bookshop 系统中，我们需要实现事件驱动解决方案，允许不同应用程序异步通信，同时减少耦合。</p>
+<p>需求：
+* 当订单被接受时，Order Service 应通知感兴趣的消费者
+* 当订单被调度时，Dispatcher Service 应通知消费者，Order Service 应更新订单状态</p>
+<p>这种类型的交互应该是异步的，可以使用 pub/sub 模型建模。</p>
+<hr />
+<h2>10.2 Spring Cloud Function</h2>
+<p>Spring Cloud Function 是一个 Spring 项目，它允许您以函数式风格编写业务逻辑，并将其部署到各种平台。</p>
+<h3>10.2.1 理解函数式编程</h3>
+<p>函数式编程是一种声明式编程范式，它将计算视为数学函数的求值，并避免改变状态和可变数据。</p>
+<p>Spring Cloud Function 提供了三种核心抽象：</p>
+<ul>
+<li><strong>Function<I, O></strong> — 接受输入并产生输出</li>
+<li><strong>Consumer<I></strong> — 接受输入但不产生输出</li>
+<li><strong>Supplier<O></strong> — 不接受输入但产生输出</li>
+</ul>
+<h3>10.2.2 定义函数</h3>
+<pre><code class="language-java">@Configuration
+public class FunctionConfig {
+
+    @Bean
+    public Function&lt;Order, OrderAcceptedMessage&gt; orderAccepted() {
+        return order -&gt; {
+            // 处理订单逻辑
+            return new OrderAcceptedMessage(order.getId());
+        };
+    }
+
+    @Bean
+    public Consumer&lt;OrderAcceptedMessage&gt; orderAcceptedConsumer() {
+        return message -&gt; {
+            // 消费订单接受消息
+            System.out.println(&quot;Order accepted: &quot; + message.getOrderId());
+        };
+    }
+}
+</code></pre>
+<h3>10.2.3 测试函数</h3>
+<pre><code class="language-java">@SpringBootTest
+class FunctionTests {
+
+    @Autowired
+    private FunctionCatalog catalog;
+
+    @Test
+    void shouldProcessOrder() {
+        Function&lt;Order, OrderAcceptedMessage&gt; orderAccepted = 
+            catalog.lookupFunction(&quot;orderAccepted&quot;);
+
+        Order order = new Order(1L, &quot;1234567890&quot;, 2);
+        OrderAcceptedMessage result = orderAccepted.apply(order);
+
+        assertThat(result.getOrderId()).isEqualTo(1L);
+    }
+}
+</code></pre>
+<hr />
+<h2>10.3 Spring Cloud Stream</h2>
+<p>Spring Cloud Stream 是一个构建事件驱动微服务的框架，它简化了与消息代理的集成。</p>
+<h3>10.3.1 理解 Spring Cloud Stream</h3>
+<p>Spring Cloud Stream 提供了一种声明式的方式来绑定消息通道，使您可以专注于业务逻辑而不是消息基础设施。</p>
+<p>核心概念：</p>
+<ul>
+<li><strong>Binder</strong> — 与消息代理交互的抽象</li>
+<li><strong>Channel</strong> — 消息通道的抽象</li>
+<li><strong>Destination</strong> — 消息代理中的目标（主题或队列）</li>
+</ul>
+<h3>10.3.2 配置 RabbitMQ</h3>
+<pre><code class="language-yaml">spring:
+  cloud:
+    stream:
+      rabbit:
+        binder:
+          hosts: localhost
+          port: 5672
+          username: guest
+          password: guest
+      bindings:
+        orderAccepted-out-0:
+          destination: order-accepted
+        orderAcceptedConsumer-in-0:
+          destination: order-accepted
+</code></pre>
+<h3>10.3.3 发布事件</h3>
+<pre><code class="language-java">@Service
+public class OrderService {
+
+    private final StreamBridge streamBridge;
+
+    public OrderService(StreamBridge streamBridge) {
+        this.streamBridge = streamBridge;
+    }
+
+    public Order acceptOrder(Order order) {
+        // 保存订单逻辑
+        OrderAcceptedMessage message = new OrderAcceptedMessage(order.getId());
+        streamBridge.send(&quot;orderAccepted-out-0&quot;, message);
+        return order;
+    }
+}
+</code></pre>
+<h3>10.3.4 消费事件</h3>
+<pre><code class="language-java">@Service
+public class OrderAcceptedConsumer {
+
+    @Bean
+    public Consumer&lt;OrderAcceptedMessage&gt; orderAcceptedConsumer() {
+        return message -&gt; {
+            System.out.println(&quot;Processing order: &quot; + message.getOrderId());
+            // 处理订单逻辑
+        };
+    }
+}
+</code></pre>
+<h3>10.3.5 使用 Spring Cloud Stream 与 Kafka</h3>
+<pre><code class="language-yaml">spring:
+  cloud:
+    stream:
+      kafka:
+        binder:
+          brokers: localhost:9092
+      bindings:
+        orderAccepted-out-0:
+          destination: order-accepted
+</code></pre>
+<p>Spring Cloud Stream 使得构建事件驱动应用程序变得简单，无论底层使用 RabbitMQ 还是 Kafka。</p>
+<hr />
+<h1>第 11 章 安全：认证和 SPA</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 Spring Security 进行身份验证</li>
+<li>实现 OAuth 2.0 和 OpenID Connect</li>
+<li>保护单页应用程序（SPA）</li>
+<li>实现 JWT 令牌认证</li>
+</ul>
+<p>安全性是任何应用程序的关键方面。在云原生环境中，我们需要在多个层面保护应用程序：身份验证（验证用户身份）、授权（控制访问权限）和数据保护（加密敏感数据）。</p>
+<p>Spring Security 是 Spring 生态系统中提供全面安全功能的框架。它支持多种认证机制，包括表单登录、HTTP Basic、OAuth 2.0 和 OpenID Connect。</p>
+<p>对于单页应用程序（SPA），我们需要实现令牌认证机制，通常使用 JSON Web Tokens (JWT)。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter11/11-begin 和 Chapter11/11-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>11.1 Spring Security 概述</h2>
+<p>Spring Security 是一个功能强大且高度可定制的身份验证和访问控制框架。它是保护基于 Spring 的应用程序的事实标准。</p>
+<h3>11.1.1 Spring Security 核心概念</h3>
+<p>Spring Security 的核心概念包括：</p>
+<ul>
+<li><strong>认证（Authentication）</strong> — 验证用户身份</li>
+<li><strong>授权（Authorization）</strong> — 控制用户访问权限</li>
+<li><strong>安全上下文（Security Context）</strong> — 存储认证信息</li>
+<li><strong>安全过滤器链（Security Filter Chain）</strong> — 处理 HTTP 请求的安全过滤器</li>
+</ul>
+<h3>11.1.2 配置 Spring Security</h3>
+<pre><code class="language-java">@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -&gt; auth
+                .requestMatchers(&quot;/books/**&quot;).permitAll()
+                .anyRequest().authenticated()
+            )
+            .oauth2Login(oauth2 -&gt; oauth2
+                .loginPage(&quot;/login&quot;)
+                .defaultSuccessUrl(&quot;/books&quot;)
+            )
+            .logout(logout -&gt; logout
+                .logoutSuccessUrl(&quot;/books&quot;)
+            );
+        return http.build();
+    }
+}
+</code></pre>
+<h3>11.1.3 配置用户存储</h3>
+<pre><code class="language-java">@Configuration
+public class UserConfig {
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        UserDetails user = User.withDefaultPasswordEncoder()
+            .username(&quot;user&quot;)
+            .password(&quot;password&quot;)
+            .roles(&quot;USER&quot;)
+            .build();
+        return new InMemoryUserDetailsManager(user);
+    }
+}
+</code></pre>
+<hr />
+<h2>11.2 OAuth 2.0 和 OpenID Connect</h2>
+<p>OAuth 2.0 是一个授权框架，允许第三方应用程序获得对 HTTP 服务的有限访问权限。OpenID Connect 是建立在 OAuth 2.0 之上的身份层。</p>
+<h3>11.2.1 OAuth 2.0 核心概念</h3>
+<p>OAuth 2.0 定义了四种授权流程：</p>
+<ul>
+<li><strong>授权码流程</strong> — 最安全，适用于服务器端应用</li>
+<li><strong>隐式流程</strong> — 适用于纯前端应用（不推荐）</li>
+<li><strong>密码流程</strong> — 适用于高度信任的客户端</li>
+<li><strong>客户端凭证流程</strong> — 适用于机器对机器通信</li>
+</ul>
+<h3>11.2.2 配置 OAuth 2.0 客户端</h3>
+<pre><code class="language-yaml">spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: your-client-id
+            client-secret: your-client-secret
+            scope: read:user,user:email
+</code></pre>
+<h3>11.2.3 OpenID Connect 配置</h3>
+<pre><code class="language-yaml">spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          okta:
+            client-id: your-client-id
+            client-secret: your-client-secret
+            scope: openid,profile,email
+            client-name: Okta
+        provider:
+          okta:
+            issuer-uri: https://your-domain.okta.com/oauth2/default
+</code></pre>
+<h3>11.2.4 资源服务器配置</h3>
+<pre><code class="language-java">@Configuration
+@EnableResourceServer
+public class ResourceServerConfig {
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -&gt; auth
+                .requestMatchers(&quot;/books/**&quot;).permitAll()
+                .anyRequest().authenticated()
+            )
+            .oauth2ResourceServer(oauth2 -&gt; oauth2
+                .jwt(Customizer.withDefaults())
+            );
+        return http.build();
+    }
+}
+</code></pre>
+<hr />
+<h2>11.3 JWT 认证</h2>
+<p>JSON Web Token (JWT) 是一种开放标准（RFC 7519），定义了一种紧凑且自包含的方式，用于在各方之间安全地传输信息。</p>
+<h3>11.3.1 JWT 结构</h3>
+<p>JWT 由三部分组成：</p>
+<ol>
+<li><strong>头部（Header）</strong> — 包含令牌类型和签名算法</li>
+<li><strong>载荷（Payload）</strong> — 包含声明（claims）</li>
+<li><strong>签名（Signature）</strong> — 用于验证令牌</li>
+</ol>
+<h3>11.3.2 配置 JWT 资源服务器</h3>
+<pre><code class="language-yaml">spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://your-auth-server.com
+          jwk-set-uri: https://your-auth-server.com/.well-known/jwks.json
+</code></pre>
+<h3>11.3.3 从 JWT 中提取用户信息</h3>
+<pre><code class="language-java">@RestController
+public class UserController {
+
+    @GetMapping(&quot;/user&quot;)
+    public Map&lt;String, Object&gt; getUser(@AuthenticationPrincipal Jwt jwt) {
+        Map&lt;String, Object&gt; user = new HashMap&lt;&gt;();
+        user.put(&quot;sub&quot;, jwt.getSubject());
+        user.put(&quot;email&quot;, jwt.getClaimAsString(&quot;email&quot;));
+        user.put(&quot;roles&quot;, jwt.getClaimAsStringList(&quot;roles&quot;));
+        return user;
+    }
+}
+</code></pre>
+<h3>11.3.4 自定义 JWT 声明</h3>
+<pre><code class="language-java">@Configuration
+public class JwtConfig {
+
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder
+            .withJwkSetUri(&quot;https://your-auth-server.com/.well-known/jwks.json&quot;)
+            .build();
+        return decoder;
+    }
+}
+</code></pre>
+<p>JWT 认证是保护微服务架构中 API 的常用方式，因为它无状态且易于在服务之间传递。</p>
+<hr />
+<h1>第 12 章 安全：授权和审计</h1>
+<p>本章内容：</p>
+<ul>
+<li>实现基于角色的访问控制（RBAC）</li>
+<li>使用 Spring Security 的方法级安全</li>
+<li>实现审计日志</li>
+<li>使用 Spring Data 的审计功能</li>
+</ul>
+<p>授权是确定经过身份验证的用户是否有权执行特定操作的过程。在微服务架构中，授权可以在多个层面实现：API 网关层面、服务层面和方法层面。</p>
+<p>Spring Security 提供了灵活的授权机制，支持基于角色、基于权限和基于表达式的访问控制。</p>
+<p>审计是跟踪系统中发生的重要事件的过程，对于安全合规和问题排查非常重要。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter12/12-begin 和 Chapter12/12-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>12.1 方法级安全</h2>
+<p>Spring Security 提供了方法级安全功能，允许您在方法级别控制访问权限。</p>
+<h3>12.1.1 启用方法级安全</h3>
+<pre><code class="language-java">@Configuration
+@EnableMethodSecurity
+public class MethodSecurityConfig {
+}
+</code></pre>
+<h3>12.1.2 使用注解控制访问</h3>
+<pre><code class="language-java">@Service
+public class BookService {
+
+    @PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+    public Book createBook(Book book) {
+        return bookRepository.save(book);
+    }
+
+    @PreAuthorize(&quot;hasRole('USER') or hasRole('ADMIN')&quot;)
+    public Book getBook(Long id) {
+        return bookRepository.findById(id).orElseThrow();
+    }
+
+    @PreAuthorize(&quot;#book.owner == authentication.name&quot;)
+    public Book updateBook(Book book) {
+        return bookRepository.save(book);
+    }
+
+    @PostAuthorize(&quot;returnObject.owner == authentication.name&quot;)
+    public Book getBookByIsbn(String isbn) {
+        return bookRepository.findByIsbn(isbn);
+    }
+}
+</code></pre>
+<h3>12.1.3 常用安全表达式</h3>
+<ul>
+<li><code>hasRole('ROLE')</code> — 用户具有指定角色</li>
+<li><code>hasAuthority('AUTH')</code> — 用户具有指定权限</li>
+<li><code>isAuthenticated()</code> — 用户已认证</li>
+<li><code>isAnonymous()</code> — 用户是匿名的</li>
+<li><code>#param == authentication.name</code> — 参数值等于当前用户名</li>
+</ul>
+<hr />
+<h2>12.2 实现基于角色的访问控制（RBAC）</h2>
+<p>RBAC 是一种广泛使用的授权模型，它根据用户的角色分配权限。</p>
+<h3>12.2.1 定义角色和权限</h3>
+<pre><code class="language-java">public enum Role {
+    USER, ADMIN, MANAGER
+}
+
+public enum Permission {
+    BOOK_READ, BOOK_WRITE, ORDER_READ, ORDER_WRITE
+}
+</code></pre>
+<h3>12.2.2 配置角色层次</h3>
+<pre><code class="language-java">@Configuration
+public class RoleHierarchyConfig {
+
+    @Bean
+    public RoleHierarchy roleHierarchy() {
+        return RoleHierarchyImpl.withDefaultRolePrefix()
+            .role(&quot;ADMIN&quot;).implies(&quot;MANAGER&quot;)
+            .role(&quot;MANAGER&quot;).implies(&quot;USER&quot;)
+            .build();
+    }
+}
+</code></pre>
+<h3>12.2.3 使用权限注解</h3>
+<pre><code class="language-java">@Service
+public class OrderService {
+
+    @PreAuthorize(&quot;hasAuthority('ORDER_READ')&quot;)
+    public Order getOrder(Long id) {
+        return orderRepository.findById(id).orElseThrow();
+    }
+
+    @PreAuthorize(&quot;hasAuthority('ORDER_WRITE')&quot;)
+    public Order createOrder(Order order) {
+        return orderRepository.save(order);
+    }
+}
+</code></pre>
+<h3>12.2.4 数据库中的角色和权限</h3>
+<pre><code class="language-java">@Entity
+@Table(name = &quot;users&quot;)
+public class User {
+    @Id
+    private Long id;
+    private String username;
+    private String password;
+
+    @ManyToMany
+    @JoinTable(
+        name = &quot;user_roles&quot;,
+        joinColumns = @JoinColumn(name = &quot;user_id&quot;),
+        inverseJoinColumns = @JoinColumn(name = &quot;role_id&quot;)
+    )
+    private Set&lt;Role&gt; roles;
+}
+</code></pre>
+<p>RBAC 模型使得权限管理更加灵活和可维护。</p>
+<hr />
+<h2>12.3 审计日志</h2>
+<p>审计日志是跟踪系统中重要事件的过程，对于安全合规和问题排查非常重要。</p>
+<h3>12.3.1 实现审计日志</h3>
+<pre><code class="language-java">@Component
+public class AuditLogger {
+
+    private static final Logger auditLog = 
+        LoggerFactory.getLogger(&quot;AUDIT&quot;);
+
+    @EventListener
+    public void handleAuthenticationSuccess(AuthenticationSuccessEvent event) {
+        auditLog.info(&quot;User '{}' authenticated successfully from IP '{}'&quot;,
+            event.getAuthentication().getName(),
+            getCurrentIP());
+    }
+
+    @EventListener
+    public void handleAuthenticationFailure(AuthenticationFailureEvent event) {
+        auditLog.warn(&quot;Authentication failed for user '{}' from IP '{}': {}&quot;,
+            event.getAuthentication().getName(),
+            getCurrentIP(),
+            event.getException().getMessage());
+    }
+
+    private String getCurrentIP() {
+        // 获取客户端IP地址
+        return &quot;N/A&quot;;
+    }
+}
+</code></pre>
+<h3>12.3.2 使用 Spring Data 审计</h3>
+<pre><code class="language-java">@Entity
+@EntityListeners(AuditingEntityListener.class)
+public class Book {
+    @Id
+    private Long id;
+
+    @CreatedDate
+    private Instant createdDate;
+
+    @LastModifiedDate
+    private Instant lastModifiedDate;
+
+    @CreatedBy
+    private String createdBy;
+
+    @LastModifiedBy
+    private String lastModifiedBy;
+}
+</code></pre>
+<h3>12.3.3 启用审计</h3>
+<pre><code class="language-java">@Configuration
+@EnableJpaAuditing
+public class AuditConfig {
+}
+</code></pre>
+<p>审计日志可以帮助您追踪谁在什么时候做了什么，对于安全审计和故障排查非常有价值。</p>
+<hr />
+<h1>第 13 章 可观测性和监控</h1>
+<p>本章内容：</p>
+<ul>
+<li>实现分布式追踪</li>
+<li>使用 Micrometer 收集指标</li>
+<li>集成 Prometheus 和 Grafana</li>
+<li>使用 Spring Boot Actuator 监控应用</li>
+</ul>
+<p>可观测性是系统能够从外部输出推断其内部状态的程度。在云原生环境中，可观测性由三个支柱组成：日志（Logs）、指标（Metrics）和追踪（Traces）。</p>
+<ul>
+<li><strong>日志</strong> — 记录应用程序中发生的事件</li>
+<li><strong>指标</strong> — 随时间测量的数值数据</li>
+<li><strong>追踪</strong> — 请求在分布式系统中传播的路径</li>
+</ul>
+<p>Spring Boot Actuator 提供了生产就绪的功能来监控和管理应用程序。Micrometer 是一个指标收集库，可以与 Prometheus、Grafana 等系统集成。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter13/13-begin 和 Chapter13/13-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>13.1 分布式追踪</h2>
+<p>分布式追踪是跟踪请求在分布式系统中传播路径的技术，帮助您理解服务之间的调用关系和性能瓶颈。</p>
+<h3>13.1.1 理解分布式追踪</h3>
+<p>分布式追踪的核心概念：</p>
+<ul>
+<li><strong>Span</strong> — 一个工作单元，包含操作名称、开始时间和持续时间</li>
+<li><strong>Trace</strong> — 一组 Span，表示一个完整的请求路径</li>
+<li><strong>Context Propagation</strong> — 在服务之间传递追踪上下文</li>
+</ul>
+<h3>13.1.2 使用 Micrometer Tracing</h3>
+<pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;io.micrometer&lt;/groupId&gt;
+    &lt;artifactId&gt;micrometer-tracing-bridge-brave&lt;/artifactId&gt;
+&lt;/dependency&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;io.zipkin.reporter2&lt;/groupId&gt;
+    &lt;artifactId&gt;zipkin-reporter-brave&lt;/artifactId&gt;
+&lt;/dependency&gt;
+</code></pre>
+<h3>13.1.3 配置 Zipkin</h3>
+<pre><code class="language-yaml">management:
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+</code></pre>
+<h3>13.1.4 自定义 Span</h3>
+<pre><code class="language-java">@Service
+public class BookService {
+
+    private final Tracer tracer;
+
+    public Book getBook(String isbn) {
+        Span span = tracer.nextSpan().name(&quot;getBook&quot;).start();
+        try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
+            return bookRepository.findByIsbn(isbn);
+        } finally {
+            span.end();
+        }
+    }
+}
+</code></pre>
+<p>分布式追踪帮助您可视化请求在微服务架构中的流动。</p>
+<hr />
+<h2>13.2 使用 Micrometer 收集指标</h2>
+<p>Micrometer 是一个指标收集库，为 JVM 应用程序提供了一个门面，类似于 SLF4J 对日志的作用。</p>
+<h3>13.2.1 Micrometer 核心概念</h3>
+<ul>
+<li><strong>Meter</strong> — 一个指标，如计数器、计时器或直方图</li>
+<li><strong>Tag</strong> — 键值对，用于维度化指标</li>
+<li><strong>MeterRegistry</strong> — 注册和管理指标的中心</li>
+</ul>
+<h3>13.2.2 配置 Micrometer</h3>
+<pre><code class="language-xml">&lt;dependency&gt;
+    &lt;groupId&gt;io.micrometer&lt;/groupId&gt;
+    &lt;artifactId&gt;micrometer-registry-prometheus&lt;/artifactId&gt;
+&lt;/dependency&gt;
+</code></pre>
+<h3>13.2.3 自定义指标</h3>
+<pre><code class="language-java">@Service
+public class OrderService {
+
+    private final Counter orderCounter;
+    private final Timer orderTimer;
+
+    public OrderService(MeterRegistry registry) {
+        this.orderCounter = Counter.builder(&quot;orders.total&quot;)
+            .description(&quot;Total number of orders&quot;)
+            .register(registry);
+
+        this.orderTimer = Timer.builder(&quot;orders.processing.time&quot;)
+            .description(&quot;Order processing time&quot;)
+            .register(registry);
+    }
+
+    public Order createOrder(Order order) {
+        return orderTimer.record(() -&gt; {
+            Order saved = orderRepository.save(order);
+            orderCounter.increment();
+            return saved;
+        });
+    }
+}
+</code></pre>
+<h3>13.2.4 应用指标</h3>
+<pre><code class="language-java">@RestController
+public class MetricsController {
+
+    @GetMapping(&quot;/metrics/orders&quot;)
+    public Map&lt;String, Object&gt; getOrderMetrics() {
+        Map&lt;String, Object&gt; metrics = new HashMap&lt;&gt;();
+        metrics.put(&quot;totalOrders&quot;, orderCounter.count());
+        metrics.put(&quot;avgProcessingTime&quot;, orderTimer.mean(TimeUnit.MILLISECONDS));
+        return metrics;
+    }
+}
+</code></pre>
+<p>Micrometer 使得收集和导出指标变得简单。</p>
+<hr />
+<h2>13.3 Prometheus 和 Grafana</h2>
+<p>Prometheus 是一个开源的监控和告警系统，Grafana 是一个可视化和分析平台。它们经常一起使用来监控云原生应用程序。</p>
+<h3>13.3.1 配置 Prometheus</h3>
+<pre><code class="language-yaml"># prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'spring-boot'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:9001']
+</code></pre>
+<h3>13.3.2 配置 Grafana</h3>
+<ol>
+<li>添加 Prometheus 数据源</li>
+<li>导入 Spring Boot 仪表板（ID: 12900）</li>
+<li>自定义图表和告警</li>
+</ol>
+<h3>13.3.3 Docker Compose 配置</h3>
+<pre><code class="language-yaml">version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - &quot;9090:9090&quot;
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - &quot;3000:3000&quot;
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+  catalog-service:
+    build: .
+    ports:
+      - &quot;9001:9001&quot;
+</code></pre>
+<h3>13.3.4 创建告警规则</h3>
+<pre><code class="language-yaml"># alert_rules.yml
+groups:
+  - name: spring-boot-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_seconds_count{status=~&quot;5..&quot;}[5m]) &gt; 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: &quot;High error rate detected&quot;
+          description: &quot;Error rate is above 10% for 5 minutes&quot;
+</code></pre>
+<p>Prometheus 和 Grafana 提供了强大的监控和可视化能力。</p>
+<hr />
+<h1>第 14 章 配置和密钥管理</h1>
+<p>本章内容：</p>
+<ul>
+<li>使用 Kubernetes ConfigMaps 管理配置</li>
+<li>使用 Kubernetes Secrets 管理敏感信息</li>
+<li>实现配置热更新</li>
+<li>使用 Spring Cloud Config Server</li>
+</ul>
+<p>在云原生环境中，配置管理是一个关键挑战。应用程序需要能够适应不同的环境（开发、测试、预发、生产），而不需要重新构建。</p>
+<p>Kubernetes 提供了 ConfigMaps 和 Secrets 来管理配置数据和敏感信息。Spring Cloud Config Server 提供了集中化的配置管理解决方案。</p>
+<p>配置热更新允许在不重启应用程序的情况下更新配置，这对于生产环境非常重要。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter14/14-begin 和 Chapter14/14-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>14.1 Kubernetes ConfigMaps</h2>
+<p>ConfigMap 是 Kubernetes 中用于存储非机密配置数据的对象。它允许您将配置与容器镜像分离，使应用程序更具可移植性。</p>
+<h3>14.1.1 创建 ConfigMap</h3>
+<pre><code class="language-yaml">apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-service-config
+data:
+  application.yml: |
+    spring:
+      datasource:
+        url: jdbc:postgresql://polar-postgres:5432/polardb_catalog
+        username: user
+        password: password
+    server:
+      port: 9001
+</code></pre>
+<h3>14.1.2 在 Pod 中使用 ConfigMap</h3>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: catalog-service
+spec:
+  containers:
+    - name: catalog-service
+      image: catalog-service:latest
+      envFrom:
+        - configMapRef:
+            name: catalog-service-config
+</code></pre>
+<h3>14.1.3 挂载 ConfigMap 为文件</h3>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: catalog-service
+spec:
+  containers:
+    - name: catalog-service
+      image: catalog-service:latest
+      volumeMounts:
+        - name: config-volume
+          mountPath: /config
+  volumes:
+    - name: config-volume
+      configMap:
+        name: catalog-service-config
+</code></pre>
+<h3>14.1.4 更新 ConfigMap</h3>
+<pre><code class="language-bash">$ kubectl create configmap catalog-service-config \
+    --from-file=application.yml \
+    --dry-run=client -o yaml | kubectl apply -f -
+</code></pre>
+<p>ConfigMap 使配置管理更加灵活和可维护。</p>
+<hr />
+<h2>14.2 Kubernetes Secrets</h2>
+<p>Secret 是 Kubernetes 中用于存储敏感信息的对象，如密码、令牌和密钥。它比 ConfigMap 更安全，因为数据是 base64 编码的。</p>
+<h3>14.2.1 创建 Secret</h3>
+<pre><code class="language-bash">$ kubectl create secret generic db-credentials \
+    --from-literal=username=user \
+    --from-literal=password=password
+</code></pre>
+<p>或使用 YAML：</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+type: Opaque
+data:
+  username: dXNlcg==  # base64 编码的 &quot;user&quot;
+  password: cGFzc3dvcmQ=  # base64 编码的 &quot;password&quot;
+</code></pre>
+<h3>14.2.2 在 Pod 中使用 Secret</h3>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: catalog-service
+spec:
+  containers:
+    - name: catalog-service
+      image: catalog-service:latest
+      env:
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+</code></pre>
+<h3>14.2.3 挂载 Secret 为文件</h3>
+<pre><code class="language-yaml">apiVersion: v1
+kind: Pod
+metadata:
+  name: catalog-service
+spec:
+  containers:
+    - name: catalog-service
+      image: catalog-service:latest
+      volumeMounts:
+        - name: secret-volume
+          mountPath: /etc/secrets
+          readOnly: true
+  volumes:
+    - name: secret-volume
+      secret:
+        secretName: db-credentials
+</code></pre>
+<h3>14.2.4 使用 External Secrets Operator</h3>
+<p>对于更安全的密钥管理，可以使用 External Secrets Operator 从外部密钥管理服务（如 AWS Secrets Manager、HashiCorp Vault）同步密钥。</p>
+<p>Secrets 提供了比 ConfigMap 更安全的敏感数据存储方式。</p>
+<hr />
+<h2>14.3 Spring Cloud Config Server</h2>
+<p>Spring Cloud Config Server 提供了集中化的外部配置支持，使用 Git、SVN 或文件系统作为后端存储。</p>
+<h3>14.3.1 配置 Config Server</h3>
+<pre><code class="language-yaml"># application.yml
+server:
+  port: 8888
+
+spring:
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/your-username/config-repo
+          default-label: main
+          clone-on-start: true
+</code></pre>
+<h3>14.3.2 配置客户端</h3>
+<pre><code class="language-yaml"># bootstrap.yml
+spring:
+  application:
+    name: catalog-service
+  cloud:
+    config:
+      uri: http://config-server:8888
+      fail-fast: true
+</code></pre>
+<h3>14.3.3 动态刷新配置</h3>
+<pre><code class="language-java">@RestController
+@RefreshScope
+public class ConfigController {
+
+    @Value(&quot;${app.feature.enabled:false}&quot;)
+    private boolean featureEnabled;
+
+    @GetMapping(&quot;/config&quot;)
+    public Map&lt;String, Object&gt; getConfig() {
+        Map&lt;String, Object&gt; config = new HashMap&lt;&gt;();
+        config.put(&quot;featureEnabled&quot;, featureEnabled);
+        return config;
+    }
+}
+</code></pre>
+<p>刷新配置：</p>
+<pre><code class="language-bash">$ curl -X POST http://localhost:9001/actuator/refresh
+</code></pre>
+<h3>14.3.4 配置加密</h3>
+<pre><code class="language-bash">$ encrypt the-password
+# 输出: 6825042f111601360e060308085022bbf4c07e232082c90a82c1a7a9b0a0c61f
+
+$ echo -n &quot;6825042f111601360e060308085022bbf4c07e232082c90a82c1a7a9b0a0c61f&quot; | \
+  gpg --symmetric --cipher-algo AES256 | base64 -w 0
+</code></pre>
+<p>Config Server 使得管理多环境配置变得简单。</p>
+<hr />
+<h1>第 15 章 持续交付和 GitOps</h1>
+<p>本章内容：</p>
+<ul>
+<li>实现 CI/CD 流水线</li>
+<li>使用 GitHub Actions 自动化部署</li>
+<li>实现 GitOps 工作流</li>
+<li>使用 Argo CD 进行持续部署</li>
+</ul>
+<p>持续交付是一种软件开发实践，其中代码更改自动构建、测试并准备好发布到生产环境。部署流水线自动化了从代码提交到可发布软件的整个过程。</p>
+<p>GitOps 是一种操作模型，其中 Git 仓库作为基础设施和应用程序配置的单一真相来源。通过将 Git 作为声明式基础设施和应用程序的中心枢纽，GitOps 提供了版本控制、协作和审计跟踪等优势。</p>
+<p>Argo CD 是一个声明式的、基于 GitOps 的持续交付工具，用于 Kubernetes。它监控 Git 仓库中的应用程序定义和目标环境中的实际状态，并自动同步它们。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter15/15-begin 和 Chapter15/15-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>15.1 CI/CD 流水线</h2>
+<p>持续集成（CI）和持续交付（CD）是现代软件开发的核心实践，帮助团队快速、可靠地交付软件。</p>
+<h3>15.1.1 理解 CI/CD</h3>
+<ul>
+<li><strong>持续集成（CI）</strong> — 开发人员频繁地将代码更改集成到共享仓库中，每次集成都通过自动化构建进行验证</li>
+<li><strong>持续交付（CD）</strong> — 自动化将通过所有测试阶段的应用程序部署到生产环境</li>
+<li><strong>持续部署</strong> — 自动化将通过所有测试阶段的应用程序部署到生产环境，无需人工干预</li>
+</ul>
+<h3>15.1.2 GitHub Actions 配置</h3>
+<pre><code class="language-yaml">name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build with Gradle
+        run: ./gradlew build
+      - name: Run tests
+        run: ./gradlew test
+      - name: Build container image
+        run: ./gradlew bootBuildImage
+
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f kubernetes/
+</code></pre>
+<h3>15.1.3 流水线阶段</h3>
+<ol>
+<li><strong>编译</strong> — 检查代码是否能编译</li>
+<li><strong>单元测试</strong> — 验证单个组件</li>
+<li><strong>集成测试</strong> — 验证组件之间的交互</li>
+<li><strong>安全扫描</strong> — 检查漏洞</li>
+<li><strong>构建镜像</strong> — 创建容器镜像</li>
+<li><strong>部署</strong> — 部署到目标环境</li>
+<li><strong>冒烟测试</strong> — 验证部署是否成功</li>
+</ol>
+<p>CI/CD 流水线提高了软件交付的速度和质量。</p>
+<hr />
+<h2>15.2 GitOps</h2>
+<p>GitOps 是一种操作模型，其中 Git 仓库作为基础设施和应用程序配置的单一真相来源。</p>
+<h3>15.2.1 GitOps 核心原则</h3>
+<ol>
+<li><strong>声明式配置</strong> — 系统的期望状态以声明方式描述</li>
+<li><strong>版本化和不可变</strong> — 所有配置都存储在 Git 中，具有完整的历史记录</li>
+<li><strong>自动拉取</strong> — 软件代理自动拉取配置变更</li>
+<li><strong>持续调和</strong> — 系统持续比较期望状态和实际状态</li>
+</ol>
+<h3>15.2.2 使用 Argo CD</h3>
+<p>Argo CD 是一个流行的 GitOps 工具，用于 Kubernetes：</p>
+<pre><code class="language-yaml"># argocd-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: catalog-service
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/k8s-config.git
+    targetRevision: main
+    path: catalog-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: polar-bookshop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+</code></pre>
+<h3>15.2.3 GitOps 工作流程</h3>
+<ol>
+<li>开发人员修改代码并推送到 Git</li>
+<li>CI 流水线构建和测试代码</li>
+<li>CI 创建新的容器镜像</li>
+<li>CI 更新配置仓库中的镜像标签</li>
+<li>Argo CD 检测到配置变更</li>
+<li>Argo CD 将变更同步到 Kubernetes 集群</li>
+</ol>
+<p>GitOps 使得部署更加可靠和可审计。</p>
+<hr />
+<h2>15.3 使用 Argo CD 部署</h2>
+<p>Argo CD 提供了多种部署策略，包括蓝绿部署、金丝雀发布和渐进式交付。</p>
+<h3>15.3.1 安装 Argo CD</h3>
+<pre><code class="language-bash">kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+</code></pre>
+<h3>15.3.2 访问 Argo CD UI</h3>
+<pre><code class="language-bash">kubectl port-forward svc/argocd-server -n argocd 8080:443
+</code></pre>
+<h3>15.3.3 创建应用程序</h3>
+<pre><code class="language-bash">argocd app create catalog-service \
+    --repo https://github.com/your-username/k8s-config.git \
+    --path catalog-service \
+    --dest-server https://kubernetes.default.svc \
+    --dest-namespace polar-bookshop \
+    --sync-policy automated
+</code></pre>
+<h3>15.3.4 同步应用程序</h3>
+<pre><code class="language-bash">argocd app sync catalog-service
+</code></pre>
+<h3>15.3.5 回滚部署</h3>
+<pre><code class="language-bash">argocd app rollback catalog-service 1
+</code></pre>
+<p>Argo CD 简化了 Kubernetes 应用程序的部署和管理。</p>
+<hr />
+<h1>第 16 章 Serverless、GraalVM 和 Knative</h1>
+<p>本章内容：</p>
+<ul>
+<li>理解 Serverless 架构</li>
+<li>使用 GraalVM 原生镜像</li>
+<li>使用 Knative 部署 Serverless 应用</li>
+<li>实现函数即服务（FaaS）</li>
+</ul>
+<p>Serverless 是一种云原生开发模型，允许开发人员构建和运行应用程序，而无需管理服务器。虽然服务器仍然存在，但它们对开发人员是抽象的。</p>
+<p>GraalVM 是一个高性能的多语言虚拟机，可以将 Java 应用程序编译为原生镜像，显著减少启动时间和内存占用。</p>
+<p>Knative 是一个基于 Kubernetes 的平台，提供了一组组件来部署和管理 Serverless 工作负载。它支持自动缩放到零、流量分割和事件驱动架构。</p>
+<p>这些技术共同帮助开发人员构建更高效、更经济的云原生应用程序。</p>
+<blockquote>
+<p>注意：本章示例的源代码在 Chapter16/16-begin 和 Chapter16/16-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。</p>
+</blockquote>
+<hr />
+<h2>16.1 Serverless 架构</h2>
+<p>Serverless 是一种云原生开发模型，允许开发人员构建和运行应用程序，而无需管理服务器。</p>
+<h3>16.1.1 Serverless 核心概念</h3>
+<p>Serverless 的主要特点：</p>
+<ul>
+<li><strong>按需执行</strong> — 代码只在需要时运行</li>
+<li><strong>按使用付费</strong> — 只为实际使用的计算资源付费</li>
+<li><strong>自动扩缩容</strong> — 根据负载自动扩展</li>
+<li><strong>无服务器管理</strong> — 云提供商管理基础设施</li>
+</ul>
+<h3>16.1.2 Serverless 平台</h3>
+<ul>
+<li><strong>AWS Lambda</strong> — Amazon 的 Serverless 计算服务</li>
+<li><strong>Azure Functions</strong> — Microsoft 的 Serverless 平台</li>
+<li><strong>Google Cloud Functions</strong> — Google 的 Serverless 服务</li>
+<li><strong>Knative</strong> — Kubernetes 上的 Serverless 平台</li>
+</ul>
+<h3>16.1.3 Serverless 的优势</h3>
+<ul>
+<li>降低运维成本</li>
+<li>提高开发效率</li>
+<li>自动扩展</li>
+<li>无需预置容量</li>
+</ul>
+<h3>16.1.4 Serverless 的局限</h3>
+<ul>
+<li>冷启动延迟</li>
+<li>执行时间限制</li>
+<li>供应商锁定</li>
+<li>调试复杂性</li>
+</ul>
+<p>Serverless 适合事件驱动的工作负载和微服务架构。</p>
+<hr />
+<h2>16.2 GraalVM 原生镜像</h2>
+<p>GraalVM 是一个高性能的多语言虚拟机，可以将 Java 应用程序编译为原生镜像，显著减少启动时间和内存占用。</p>
+<h3>16.2.1 理解原生镜像</h3>
+<p>原生镜像是一个自包含的可执行文件，包含应用程序和所有依赖项，不需要 JVM 即可运行。</p>
+<p>优势：
+* <strong>快速启动</strong> — 毫秒级启动时间
+* <strong>低内存占用</strong> — 更少的内存消耗
+* <strong>无需 JVM</strong> — 可以在没有 Java 运行时的环境中运行</p>
+<h3>16.2.2 使用 Spring Boot 构建原生镜像</h3>
+<p>使用 Gradle：</p>
+<pre><code class="language-bash">./gradlew bootBuildImage --builder=ghcr.io/graalvm/native-image:latest
+</code></pre>
+<p>使用 Maven：</p>
+<pre><code class="language-bash">mvn -Pnative spring-boot:build-image
+</code></pre>
+<h3>16.2.3 配置原生镜像</h3>
+<pre><code class="language-xml">&lt;build&gt;
+    &lt;plugins&gt;
+        &lt;plugin&gt;
+            &lt;groupId&gt;org.graalvm.buildtools&lt;/groupId&gt;
+            &lt;artifactId&gt;native-maven-plugin&lt;/artifactId&gt;
+        &lt;/plugin&gt;
+        &lt;plugin&gt;
+            &lt;groupId&gt;org.springframework.boot&lt;/groupId&gt;
+            &lt;artifactId&gt;spring-boot-maven-plugin&lt;/artifactId&gt;
+            &lt;configuration&gt;
+                &lt;image&gt;
+                    &lt;builder&gt;paketobuildpacks/builder-jammy-java:latest&lt;/builder&gt;
+                &lt;/image&gt;
+            &lt;/configuration&gt;
+        &lt;/plugin&gt;
+    &lt;/plugins&gt;
+&lt;/build&gt;
+</code></pre>
+<h3>16.2.4 测试原生镜像</h3>
+<pre><code class="language-bash"># 构建原生镜像
+./mvnw -Pnative native:compile
+
+# 运行原生镜像
+./target/catalog-service
+</code></pre>
+<p>GraalVM 原生镜像特别适合 Serverless 和容器化部署。</p>
+<hr />
+<h2>16.3 Knative</h2>
+<p>Knative 是一个基于 Kubernetes 的平台，提供了一组组件来部署和管理 Serverless 工作负载。</p>
+<h3>16.3.1 Knative 核心组件</h3>
+<ul>
+<li><strong>Serving</strong> — 处理部署和自动扩缩容</li>
+<li><strong>Eventing</strong> — 处理事件驱动架构</li>
+<li><strong>Build</strong> — 处理构建和部署</li>
+</ul>
+<h3>16.3.2 安装 Knative</h3>
+<pre><code class="language-bash"># 安装 Knative Serving
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.9.0/serving-crds.yaml
+kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.9.0/serving-core.yaml
+
+# 安装网络层（Istio）
+kubectl apply -f https://github.com/knative/net-istio/releases/download/knative-v1.9.0/net-istio.yaml
+</code></pre>
+<h3>16.3.3 部署服务到 Knative</h3>
+<pre><code class="language-yaml">apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  template:
+    spec:
+      containers:
+        - image: ghcr.io/your-username/catalog-service:latest
+          ports:
+            - containerPort: 9001
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
+</code></pre>
+<h3>16.3.4 自动扩缩容到零</h3>
+<p>Knative 可以在没有请求时自动将服务缩放为零，节省资源：</p>
+<pre><code class="language-yaml">apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: &quot;0&quot;
+        autoscaling.knative.dev/maxScale: &quot;10&quot;
+    spec:
+      containers:
+        - image: ghcr.io/your-username/catalog-service:latest
+</code></pre>
+<h3>16.3.5 流量分割</h3>
+<pre><code class="language-yaml">apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: catalog-service
+spec:
+  template:
+    spec:
+      containers:
+        - image: ghcr.io/your-username/catalog-service:v1
+  traffic:
+    - revisionName: catalog-service-v1
+      percent: 90
+    - revisionName: catalog-service-v2
+      percent: 10
+</code></pre>
+<p>Knative 简化了在 Kubernetes 上运行 Serverless 应用程序。</p>
+</body>
+</html>

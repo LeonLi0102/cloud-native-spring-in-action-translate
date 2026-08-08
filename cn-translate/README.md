@@ -1,6 +1,6 @@
-# 云原生 Spring 实战 （MEAP)
+# 云原生 Spring 实战 中文翻译
 
-《Cloud Native Spring in Action With Spring Boot and Kubernetes》 预计将于 2022 年夏出版。现在的翻译基于 Manning 出版社的 MEAP 版本。
+《Cloud Native Spring in Action With Spring Boot and Kubernetes》的社区中文翻译。
 
 ![](assets/00-Vitale-CNS-MEAP-HI.png)
 
