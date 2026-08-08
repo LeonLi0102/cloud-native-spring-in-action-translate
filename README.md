@@ -67,6 +67,10 @@ cloud-native-spring-in-action-translate/
 - 图片保留原样，图下加中文注释
 - 保留原文的代码示例不翻译
 
+## 在线阅读
+
+**GitBook：** https://leonli0102.github.io/cloud-native-spring-in-action/
+
 ## 相关项目
 
 - 《Spring 实战第6版》翻译：https://github.com/LeonLi0102/spring-in-action-v6-translate
