@@ -8,7 +8,7 @@ Kubernetes（通常简称为 K8s ）是一个用于自动化部署、扩容和�
 
 这样，部署目标就从特定计算机转移到计算机集群。Kubernetes 可以为您管理一组计算机。我在上一章介绍拓扑结构时，谈到了这一区别。图 2.10 再次提醒您容器部署拓扑和编排器部署拓扑的不同部署目标。
 
-![](../../assets/2.10.jpg)
+![](../../assets/final/ch2_2.10.png)
 **图 2.10 容器的部署目标是一台机器，而对于编排器来说，它是一个集群。**
 
 有几种方法可以在本地环境中安装 Kubernetes。方法一是建议安装 Kind，这是一个使用 Docker 容器运行本地 Kubernetes 集群的工具。因为您已经在本地机器上安装了 Docker，所以这是一种方便获得本地 Kubernetes 集群的方法。您可以在项目网站 [kind.sigs.k8s.io](https://kind.sigs.k8s.io/) 中找到安装指南。这也是我将在本书中使用的例子，但是如果您喜欢，可以自由选择其他工具。另一个可行的选择是 minikube ([minikube.sigs.k8s.io](https://minikube.sigs.k8s.io/)）。

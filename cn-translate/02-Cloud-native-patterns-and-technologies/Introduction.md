@@ -12,7 +12,7 @@
 
 首先，我们将介绍云原生开发的原则和最佳实践。然后，我们将探讨 Spring 生态系统如何支持云原生开发。接着，我们将学习如何使用 Docker 容器化应用程序，以及如何使用 Kubernetes 管理容器。最后，我们将介绍贯穿本书的示例项目——Polar Bookshop。
 
-![](../assets/2.1.jpg)
+![](../assets/final/ch2_2.1.png)
 
 **图 2.1 Spring 应用从 Java 到容器到 Kubernetes 的旅程**
 
