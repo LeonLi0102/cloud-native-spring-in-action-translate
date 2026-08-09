@@ -103,3 +103,5 @@
     * [16.1 使用 Spring Native 与 GraalVM 构建原生镜像](16-Serverless-GraalVM-and-Knative/16.1-GraalVM-native-images.md)
     * [16.2 使用 Spring Cloud Function 构建 Serverless 应用](16-Serverless-GraalVM-and-Knative/16.2-Serverless-applications.md)
     * [16.3 使用 Knative 部署 Serverless 应用](16-Serverless-GraalVM-and-Knative/16.3-Knative.md)
+* [附录 A 设置开发环境](Appendix-A/README.md)
+* [附录 B 在 DigitalOcean 上生产环境的 Kubernetes](Appendix-B/README.md)
