@@ -12,7 +12,7 @@
 
 对软件测试进行分类的一种方式由 Brian Marick 最初引入的敏捷测试象限模型定义，后来由 Lisa Crispin 和 Janet Gregory 在其著作 *Agile Testing*（Addison-Wesley Professional, 2008）、*More Agile Testing*（Addison-Wesley Professional, 2014）和 *Agile Testing Condensed*（Library and Archives Canada, 2019）中描述和扩展。他们的模型还被 Jez Humble 和 Dave Farley 在 *Continuous Delivery*（Addison-Wesley Professional, 2010）中采纳。该象限根据测试是面向技术还是面向业务，以及是支持开发团队还是用于评判产品来对软件测试进行分类。图 3.7 展示了我在全书中将提到的一些测试类型示例，基于 *Agile Testing Condensed* 中提出的模型。
 
-![](../../assets/3.7.jpg)
+![](../../assets/ch03/3.7.png)
 **图 3.7 敏捷测试象限模型有助于规划软件测试策略。**
 
 遵循持续交付实践，我们应该致力于在四个象限中的三个中实现完全自动化测试，如图 3.7 所示。在本书中，我们将主要关注左下象限。在本节中，我们将使用单元测试和集成测试（有时称为组件测试）。我们编写单元测试来验证单个应用组件的独立行为，而集成测试则断言应用不同部分相互交互的整体功能。

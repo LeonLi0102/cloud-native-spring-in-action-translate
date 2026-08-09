@@ -12,6 +12,6 @@
 
 本章将介绍如何使用 Spring Cloud Gateway 构建一个边缘服务（Edge Service），作为系统的统一入口点。边缘服务可以处理跨切面关注点，如安全、监控、容错和限流，同时将请求路由到内部服务。
 
-![](../assets/final/ch9_9.1.png)
+![](../assets/ch09/9.1.png)
 
 **图 9.1 添加 Edge Service 和 Redis 后的 Polar Bookshop 系统架构**

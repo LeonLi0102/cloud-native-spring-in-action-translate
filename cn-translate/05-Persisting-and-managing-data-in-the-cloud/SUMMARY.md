@@ -1,11 +1,16 @@
-# 第 5 章 云中的数据持久化和管理
+# 总结
 
-* [5.1 云原生系统的数据库](5.1-Databases-for-cloud-native-systems/Introduction.md)
-    * [5.1.1 云中的数据服务](5.1-Databases-for-cloud-native-systems/5.1.1-Data-services-in-the-cloud.md)
-    * [5.1.2 以容器方式运行 PostgreSQL](5.1-Databases-for-cloud-native-systems/5.1.2-Running-PostgreSQL-as-a-container.md)
-* [5.2 使用 Spring Data JDBC 进行数据持久化](5.2-Data-persistence-with-Spring-Data-JDBC/Introduction.md)
-    * [5.2.1 使用 JDBC 连接数据库](5.2-Data-persistence-with-Spring-Data-JDBC/5.2.1-Connecting-to-a-database-with-JDBC.md)
-    * [5.2.2 使用 Spring Data 定义持久化实体](5.2-Data-persistence-with-Spring-Data-JDBC/5.2.2-Defining-persistent-entities-with-Spring-Data.md)
-    * [5.2.3 启用和配置 JDBC 审计](5.2-Data-persistence-with-Spring-Data-JDBC/5.2.3-Enabling-and-configuring-JDBC-auditing.md)
-* [5.3 使用 Spring 和 Testcontainers 测试数据持久化](5.3-Testing-data-persistence.md)
-* [5.4 使用 Flyway 管理生产环境中的数据库](5.4-Managing-databases-with-Flyway.md)
+本章涵盖了以下内容：
+
+* **状态（State）是关闭服务并启动新实例时应保留的所有内容** — 数据服务是云原生架构中有状态的组件，需要存储技术来持久化状态。
+* **在云中使用数据服务具有挑战性** — 因为云是一个动态环境。
+* **选择数据服务时需要考虑的因素** — 包括可扩展性、弹性、性能以及是否符合特定法规和法律。
+* **可以使用云提供商提供和管理的数据服务，也可以自行管理** — 依赖虚拟机或容器。
+* **Spring Data 提供了通用的抽象和模式来访问数据** — 使得在不同模块（关系型和非关系型数据库）之间切换变得简单。
+* **Spring Data 的主要元素是数据库驱动、实体（Entity）和仓库（Repository）** — 实体表示领域对象，可以通过 `@Id` 注解标注主键字段。
+* **Spring Data 允许在创建或更新实体时捕获审计元数据** — 通过 `@EnableJdbcAuditing` 启用此功能。
+* **数据仓库通过定义接口访问数据库中的实体** — Spring Data 会自动生成实现，可以根据需求扩展 `CrudRepository` 等接口。
+* **在 Spring Data JDBC 中，所有变更操作应在事务中运行** — 使用 `@Transactional` 注解。
+* **可以使用 `@DataJdbcTest` 注解对 Spring Data JDBC 切片进行集成测试** — 环境一致性对测试和部署管道的质量至关重要。
+* **通过 Testcontainers 库可以测试应用与容器化支持服务之间的集成** — 它提供轻量级、一次性的容器。
+* **数据库模式对应用至关重要** — 生产环境应使用 Flyway 等工具进行数据库版本控制，确保可复现性、可追溯性和可靠性。

@@ -8,5 +8,5 @@ Docker 是 Linux 容器最常用的实现。在 Docker 网站上（[www.docker.c
 > 在上一章中，您了解到容器共享相同的操作系统内核并依赖于 Linux 特性，如 namespaces 和 cGroup。我们将在 Linux 的 Docker 容器中运行 Spring Boot 应用程序，但 Docker 也能在 macOS 或 Windows 机器上工作吗？
 > 当您在 Linux 操作系统上安装 Docker 时，您将获得完整的 Linux 主机上的 Docker 引擎软件。相反，如果您安装 Docker Desktop for Mac 或 Docker Desktop for Windows，只有 Docker 客户端安装在 macOS/Windows 主机上。在此场景中，会配置一个轻量级 Linux 虚拟机，Docker 服务器组件安装在该虚拟机上。作为使用者，您将获得几乎与 Linux 机器上相同的体验，也几乎不会注意到差别。但实际上，无论何时使用 Docker CLI 执行操作时，您实际上是在与一台虚拟机上的 Docker 服务器进行交互（即运行 Linux 的虚拟机）。
 > 您可以通过启动 Docker 并运行 `docker version` 命令来验证它。如图 2.7 所示，您会注意到 Docker 客户端正在 darwin/amd64 体系结构（在 macOS 上）或 windows/amd64 （在 Windows 上）上运行，而 Docker 服务器在 linux/amd64 上运行。
-> ![](../../assets/final/ch2_2.7.png)
+> ![](../../assets/ch02/2.7.png)
 > **图 2.7 在 macOS/Windows 上，Docker 客户端组件在您的计算机上运行，而服务器运行在轻量级 Linux 虚拟机上。**

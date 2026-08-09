@@ -1,5 +1,15 @@
-# 第 16 章 Serverless、GraalVM 和 Knative
+# 总结
 
-* [16.1 使用 Spring Native 与 GraalVM 构建原生镜像](16.1-GraalVM-native-images.md)
-* [16.2 使用 Spring Cloud Function 构建 Serverless 应用](16.2-Serverless-applications.md)
-* [16.3 使用 Knative 部署 Serverless 应用](16.3-Knative.md)
+本章涵盖了以下内容：
+
+* **以 GraalVM 替代标准 OpenJDK 发行版作为 Java 应用的运行环境** — 可提升性能和效率，得益于执行 JIT 编译的新优化技术（GraalVM 编译器）。
+* **GraalVM 之所以在无服务器领域创新且受欢迎的关键是原生镜像（Native Image）模式** — 不再将 Java 代码编译为字节码并依赖 JVM 在运行时解释和转换为机器码，GraalVM 提供新技术（原生镜像构建器）将 Java 应用直接编译为机器码，获得原生可执行文件或原生镜像。
+* **编译为原生镜像的 Java 应用具有更快的启动时间、优化的内存消耗和即时的峰值性能** — 不同于 JVM 选项。
+* **Spring Native 的主要目标是使任何 Spring 应用无需任何代码更改即可使用 GraalVM 编译为原生可执行文件** — 提供 AOT 基础设施（通过专用 Gradle/Maven 插件调用），为 GraalVM 的 AOT 编译贡献所有必需的配置。
+* **编译 Spring Boot 应用为原生可执行文件有两种方式** — 第一种产生操作系统特定的可执行文件并直接在机器上运行应用；第二种依赖 Buildpacks 将原生可执行文件容器化并在 Docker 等容器运行时上运行。
+* **无服务器（Serverless）是虚拟机和容器之上的进一步抽象层** — 将更多责任从产品团队转移到平台。
+* **遵循无服务器计算模型，开发者专注于实现业务逻辑** — 无服务器应用由传入请求或特定事件触发，称为请求驱动或事件驱动应用。
+* **使用 Spring Cloud Function 的应用可通过多种方式部署** — 当包含 Spring Native 时，还可将应用编译为原生镜像并在服务器或容器运行时上运行。
+* **得益于即时启动时间和降低的内存消耗** — 可在 Knative 上无缝部署此类应用。
+* **Knative 是"基于 Kubernetes 的平台，用于部署和管理现代无服务器工作负载"** — 可用于部署标准容器化工作负载和事件驱动应用。
+* **Knative 项目为开发者提供卓越的用户体验和更高层抽象** — 使得在 Kubernetes 上部署应用更加简单，正成为 Kubernetes 上部署工作负载的事实标准抽象，不仅适用于无服务器也适用于更标准的容器化应用。

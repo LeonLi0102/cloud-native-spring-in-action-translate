@@ -89,7 +89,7 @@ $ octant
 
 Octant 将在您的浏览器中打开并显示来自当前 Kubernetes 上下文的数据，该上下文应该是 DigitalOcean 上的集群。从右上角菜单中，您可以从下拉框中切换上下文，如图 B.1 所示。
 
-![](../assets/final/appendix-b-1.png)
+![](../assets/appendix-b/B.1.png)
 **图 B.1 Octant 允许您通过切换上下文来可视化不同 Kubernetes 集群的工作负载**
 
 正如我在第 9 章中提到的，Kubernetes 不附带 Ingress Controller；需要您安装一个。由于我们将依赖 Ingress 资源来允许来自公共互联网的流量进入集群，因此我们需要安装 Ingress Controller。让我们安装与本地使用的相同的：ingress-nginx。

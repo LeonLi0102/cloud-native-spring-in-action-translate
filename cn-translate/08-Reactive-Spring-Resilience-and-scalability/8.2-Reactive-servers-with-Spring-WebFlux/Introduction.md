@@ -8,7 +8,7 @@ Order Service 将提供购买书籍的功能。与 Catalog Service 一样，它�
 
 Order Service 还将通过其 REST API 与 Catalog Service 交互，以获取有关书籍的详细信息并检查其可用性。这将是第 8.3 节的重点。图 8.4 展示了系统的新组件。
 
-![](../../assets/final/ch8_8.4.png)
+![](../../assets/ch08/8.4.png)
 
 **图 8.4 Order Service 应用程序暴露 API 以提交和检索书籍订单，使用 PostgreSQL 数据库存储数据，并与 Book Service 通信以获取书籍详情**
 

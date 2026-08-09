@@ -6,7 +6,7 @@
 
 Spring 为您提供了一个方便的环境抽象，允许您访问任何配置数据，而不管其来源如何。Spring 应用程序环境的两个关键方法是 properties 和 profiles。您已经在上一章中使用了 properties。profiles 是一种只有在已启用给定 profile 时，才加载特定标记的一组 bean 或运行时配置数据的工具。图 4.2 显示了 Spring 应用程序的主要配置方法。
 
-![](../../assets/4.2.jpg)
+![](../../assets/ch04/4.2.png)
 
 **图 4.2 Environment 接口提供了对 Spring 应用程序的两个关键配置方法：properties 和 profiles。**
 

@@ -1,26 +1,17 @@
-# 第 7 章 Kubernetes 基础
+# 总结
 
-* [引言](Introduction.md)
-* [7.1 从 Docker 过渡到 Kubernetes](7.1-Moving-from-Docker-to-Kubernetes/Introduction.md)
-    * [7.1.1 使用本地 Kubernetes 集群](7.1-Moving-from-Docker-to-Kubernetes/7.1.1-Working-with-a-local-Kubernetes-cluster.md)
-    * [7.1.2 在本地集群中管理数据服务](7.1-Moving-from-Docker-to-Kubernetes/7.1.2-Managing-data-services-in-a-local-cluster.md)
-* [7.2 Spring Boot 的 Kubernetes Deployment](7.2-Kubernetes-Deployments-for-Spring-Boot/Introduction.md)
-    * [7.2.1 从容器到 Pod](7.2-Kubernetes-Deployments-for-Spring-Boot/7.2.1-From-containers-to-Pods.md)
-    * [7.2.2 使用 Deployment 控制 Pod](7.2-Kubernetes-Deployments-for-Spring-Boot/7.2.2-Controlling-Pods-with-Deployments.md)
-    * [7.2.3 为 Spring Boot 应用程序创建 Deployment](7.2-Kubernetes-Deployments-for-Spring-Boot/7.2.3-Creating-a-Deployment-for-a-Spring-Boot-application.md)
-* [7.3 服务发现和负载均衡](7.3-Service-discovery-and-load-balancing/Introduction.md)
-    * [7.3.1 理解服务发现和负载均衡](7.3-Service-discovery-and-load-balancing/7.3.1-Understanding-service-discovery-and-load-balancing.md)
-    * [7.3.2 客户端服务发现和负载均衡](7.3-Service-discovery-and-load-balancing/7.3.2-Client-side-service-discovery-and-load-balancing.md)
-    * [7.3.3 服务器端服务发现和负载均衡](7.3-Service-discovery-and-load-balancing/7.3.3-Server-side-service-discovery-and-load-balancing.md)
-    * [7.3.4 使用 Kubernetes Service 暴露 Spring Boot 应用程序](7.3-Service-discovery-and-load-balancing/7.3.4-Exposing-Spring-Boot-applications-with-Kubernetes-Services.md)
-* [7.4 可扩展性和可弃置性](7.4-Scalability-and-disposability/Introduction.md)
-    * [7.4.1 确保可弃置性：快速启动](7.4-Scalability-and-disposability/7.4.1-Ensuring-disposability-Fast-startup.md)
-    * [7.4.2 确保可弃置性：优雅关闭](7.4-Scalability-and-disposability/7.4.2-Ensuring-disposability-Graceful-shutdown.md)
-    * [7.4.3 扩展 Spring Boot 应用程序](7.4-Scalability-and-disposability/7.4.3-Scaling-Spring-Boot-applications.md)
-* [7.5 使用 Tilt 进行本地 Kubernetes 开发](7.5-Local-Kubernetes-development-with-Tilt/Introduction.md)
-    * [7.5.1 使用 Tilt 的内部开发循环](7.5-Local-Kubernetes-development-with-Tilt/7.5.1-Inner-development-loop-with-Tilt.md)
-    * [7.5.2 使用 Octant 可视化 Kubernetes 工作负载](7.5-Local-Kubernetes-development-with-Tilt/7.5.2-Visualizing-your-Kubernetes-workloads-with-Octant.md)
-* [7.6 部署流水线：验证 Kubernetes 清单](7.6-Deployment-pipeline-Validate-Kubernetes-manifests/Introduction.md)
-    * [7.6.1 在提交阶段验证 Kubernetes 清单](7.6-Deployment-pipeline-Validate-Kubernetes-manifests/7.6.1-Validating-Kubernetes-manifests-in-the-commit-stage.md)
-    * [7.6.2 使用 GitHub Actions 自动化 Kubernetes 清单验证](7.6-Deployment-pipeline-Validate-Kubernetes-manifests/7.6.2-Automating-Kubernetes-manifests-validation-with-GitHub-Actions.md)
-* [总结](Summary.md)
+本章涵盖了以下内容：
+
+* **当系统需要可扩展性和弹性时，可使用 Kubernetes** — Docker 适用于单机单实例容器运行，但 Kubernetes 提供跨机器集群扩展容器的能力。
+* **Kubernetes 提供在容器故障和机器宕机时确保弹性的所有功能** — Pod 是 Kubernetes 中最小的可部署单元。
+* **通过 Deployment 对象声明应用的期望状态** — Kubernetes 会确保实际状态匹配期望状态，包括保持所需数量的副本始终运行。
+* **服务发现（Service Discovery）和负载均衡允许动态建立服务间交互** — 可在客户端（如 Spring Cloud Netflix Eureka）或服务器端（如 Kubernetes）管理。
+* **Kubernetes 通过 Service 对象提供原生的服务发现和负载均衡功能** — 每个 Service 名称可用作 DNS 名称，Kubernetes 会将名称解析为 Service IP 地址并最终转发到可用实例之一。
+* **可通过定义两个 YAML 清单将 Spring Boot 应用部署到 Kubernetes 集群** — 一个用于 Deployment 对象，一个用于 Service 对象。
+* **使用 kubectl apply -f <文件名> 命令从文件创建对象** — kubectl 客户端是与 Kubernetes 集群交互的主要工具。
+* **云原生应用应具备可丢弃性（快速启动和优雅关闭）和无状态性** — 依赖数据服务存储状态。
+* **优雅关闭（Graceful Shutdown）由 Spring Boot 和 Kubernetes 共同支持** — 是可扩展应用的重要方面。
+* **Kubernetes 使用 ReplicaSet 控制器复制应用 Pod** — 保持它们持续运行。
+* **Tilt 是自动化本地开发工作流的工具** — 您编写应用代码，Tilt 负责构建镜像、部署到本地 Kubernetes 集群并在代码变更时保持更新，通过 tilt up 启动。
+* **Octant 仪表盘可视化 Kubernetes 工作负载** — 不仅适用于本地集群检查和故障排除，也适用于远程集群。
+* **Kubeval 是验证 Kubernetes 清单的便捷工具** — 包含在部署管道中时尤为有用。
