@@ -2,15 +2,16 @@
 
 本章内容：
 
-* 边缘服务器和 Spring Cloud Gateway
-* 使用 Spring Cloud Gateway 构建 API 网关
-* 使用 Resilience4j 实现断路器模式
-* 实现重试、超时和限流
+* 使用 Spring Cloud Gateway 构建边缘服务
+* 使用 Spring Cloud Circuit Breaker 和 Resilience4J 实现容错
+* 使用 Spring Cloud Gateway 和 Redis 实现请求限流
+* 使用 Redis 进行分布式会话管理
+* 使用 Kubernetes Ingress 管理外部访问
 
-由于 API 网关是系统的入口点，它也是处理横切关注点（如安全性、监控和韧性）的绝佳位置。边缘服务器是系统边缘的应用程序，实现 API 网关和横切关注点等方面。
+在前面的章节中，我们构建了 Catalog Service 和 Order Service，它们是 Polar Bookshop 系统的核心服务。这些服务提供了 RESTful API，可以被客户端直接调用。然而，在生产环境中，直接暴露内部服务给外部客户端是不安全的，也是不推荐的。
 
-您可以配置断路器以防止调用下游服务时的级联故障。可以为所有对内部服务的调用定义重试和超时。可以控制入口流量并执行配额策略。还可以在边缘实现身份验证和授权，并将令牌传递给下游服务。
+本章将介绍如何使用 Spring Cloud Gateway 构建一个边缘服务（Edge Service），作为系统的统一入口点。边缘服务可以处理跨切面关注点，如安全、监控、容错和限流，同时将请求路由到内部服务。
 
-Spring Cloud Gateway 大大简化了构建边缘服务的过程，专注于简单性和生产力。由于它基于响应式栈，它可以高效扩展以处理系统边缘自然发生的高工作负载。
+![](../assets/final/ch9_9.1.png)
 
-> 注意：本章示例的源代码在 Chapter09/09-begin 和 Chapter09/09-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+**图 9.1 添加 Edge Service 和 Redis 后的 Polar Bookshop 系统架构**

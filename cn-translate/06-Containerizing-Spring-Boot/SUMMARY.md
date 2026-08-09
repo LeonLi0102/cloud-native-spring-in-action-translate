@@ -1,13 +1,17 @@
-# 第 6 章 Spring Boot 容器化
+# 总结
 
-* [6.1 使用 Docker 处理容器镜像](6.1-Working-with-container-images-on-Docker/Introduction.md)
-    * [6.1.1 理解容器镜像](6.1-Working-with-container-images-on-Docker/6.1.1-Understanding-container-images.md)
-    * [6.1.2 使用 Dockerfile 创建镜像](6.1-Working-with-container-images-on-Docker/6.1.2-Creating-images-with-Dockerfiles.md)
-    * [6.1.3 在 GitHub Container Registry 上发布镜像](6.1-Working-with-container-images-on-Docker/6.1.3-Publishing-images-on-GitHub-Container-Registry.md)
-* [6.2 将 Spring Boot 应用程序打包为容器镜像](6.2-Packaging-Spring-Boot-applications-as-container-images/Introduction.md)
-    * [6.2.1 为容器化准备 Spring Boot](6.2-Packaging-Spring-Boot-applications-as-container-images/6.2.1-Preparing-Spring-Boot-for-containerization.md)
-    * [6.2.2 使用 Dockerfile 容器化 Spring Boot](6.2-Packaging-Spring-Boot-applications-as-container-images/6.2.2-Containerizing-Spring-Boot-with-Dockerfiles.md)
-    * [6.2.3 为生产构建容器镜像](6.2-Packaging-Spring-Boot-applications-as-container-images/6.2.3-Building-container-images-for-production.md)
-    * [6.2.4 使用 Cloud Native Buildpacks 容器化 Spring Boot](6.2-Packaging-Spring-Boot-applications-as-container-images/6.2.4-Containerizing-Spring-Boot-with-Cloud-Native-Buildpacks.md)
-* [6.3 使用 Docker Compose 管理 Spring Boot 容器](6.3-Managing-Spring-Boot-containers-with-Docker-Compose/Introduction.md)
-* [6.4 部署流水线：打包和发布](6.4-Deployment-pipeline-Package-and-publish.md)
+* 容器镜像是轻量级可执行包，包含运行内部应用程序所需的一切。
+* 每个镜像由多个层组成，每层代表相应指令产生的修改。最终产物可以作为容器运行。
+* 运行容器时，会在镜像层之上添加一个额外的可写层。
+* 定义容器镜像的标准方式是在一个称为 Dockerfile 的特殊文件中列出指令序列。
+* Dockerfile 充当包含构建所需镜像所有步骤的配方。
+* 构建容器镜像时，性能和安全性是重要的关注点。例如，您不应在任何镜像层中存储机密信息，并且永远不要以 root 用户运行容器。
+* 容器注册表之于 OCI 镜像，就像 Maven 仓库之于 Java 库。容器注册表的例子有 Docker Hub 和 GitHub Container Registry。
+* 您可以通过不同的方式将 Spring Boot 应用程序打包为容器镜像。
+* Dockerfile 给您最大的灵活性，但使您有责任配置所需的一切。
+* Cloud Native Buildpacks（与 Spring Boot 插件集成）让您直接从源代码构建 OCI 镜像，为您优化安全性、性能和存储。
+* 将 Spring Boot 应用程序作为容器运行时，您应该考虑要向外部世界公开哪些端口（如 8080）以及容器是否应该相互通信。如果是，您可以使用 Docker DNS 服务器通过容器名而不是 IP 或主机名来联系同一网络中的容器。
+* 如果您想调试作为容器运行的应用程序，请记住暴露调试端口。
+* Docker Compose 是一个与 Docker 服务器交互的客户端，它提供了比 Docker CLI 更好的用户体验。通过一个 YAML 文件，您可以管理所有容器。
+* 您可以使用 GitHub Actions 自动化将应用程序打包为容器镜像、扫描漏洞并发布到容器注册表的过程。这是部署流水线提交阶段的一部分。
+* 部署流水线提交阶段的结果是一个发布候选。

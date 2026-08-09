@@ -1,0 +1,1702 @@
+6.2 Packaging Spring Boot applications as container images
+
+189
+
+6.2.1
+
+Preparing Spring Boot for containerization
+Packaging a Spring Boot application as a container image means that the application will run in an isolated context, including computational resources and network. Two main questions may arise from this isolation:
+ How can you reach the application through the network?  How can you make it interact with other containers?
+We'll look at those two issues next.
+EXPOSING APPLICATION SERVICES THROUGH PORT FORWARDING In chapter 2, when you ran Catalog Service as a container, you mapped port 8080, on which the application exposed its services, to port 8080 on your local machine. After doing that, you could use the application by visiting http://localhost:8080. What you did there is called port forwarding or port mapping or port publishing, and it's used to make your containerized application accessible from the outside world.
+By default, containers join an isolated network inside the Docker host. If you want to access any container from your local network, you must explicitly configure the port mapping. For example, when you ran the Catalog Service application, you specified the mapping as an argument to the docker run command: -p 8080:8080 (where the first is the external port and the second is the container port). Figure 6.8 illustrates how this works.
+
+GET http://localhost:8080 You
+
+8080 8080
+
+Docker network
+Container
+
+Port mapping
+
+catalog-service
+
+Container running a web application listening on port 8080
+Figure 6.8 Port mapping lets you access the services exposed by a containerized application by forwarding the traffic from the container network to the outside world.
+USING DOCKER'S BUILT-IN DNS SERVER FOR SERVICE DISCOVERY Thanks to port forwarding, the Catalog Service application in the previous chapter could access the PostgreSQL database server through the URL jdbc:postgresql:// localhost:5432, even if it was running inside a container. The interaction is shown in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+190
+
+CHAPTER 6 Containerizing Spring Boot
+
+figure 6.9. When running Catalog Service as a container, however, you will not be able to do that anymore, since localhost would represent the inside of your container and not your local machine. How can you solve this problem?
+
+Catalog Service
+
+jdbc:postgresql://localhost:5432
+
+5432 5432
+
+Docker network
+Container
+
+Port mapping
+
+polar-postgres
+
+The application can contact the PostgreSQL server on localhost because the container port is mapped outside for external access.
+
+Container running the PostgreSQL server and listening on port 5432
+
+Figure 6.9 The Catalog Service application can interact with the PostgreSQL container thanks to the port mapping, making the database accessible from the outside world.
+
+Docker has a built-in DNS server that can enable containers in the same network to find each other using the container name rather than a hostname or an IP address. For example, Catalog Service will be able to call the PostgreSQL server through the URL jdbc:postgresql://polar-postgres:5432, where polar-postgres is the container name. Figure 6.10 shows how it works. Later in the chapter you'll see how to achieve this result in code.
+
+Port mapping
+
+Container catalog-service
+
+Docker network
+jdbc:postgresql://polar-postgres:5432
+
+Container polar-postgres
+
+5432
+9001 9001
+
+Container running a web
+application listening on port 9001
+
+The two containers are in the same Docker network, so they can talk to each other using the container name instead of IP addresses.
+
+Container running the PostgreSQL server and listening on port 5432
+
+Figure 6.10 The Catalog Service container can directly interact with the PostgreSQL container because they are both on the same Docker network.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+191
+
+So before moving on, let's create a network inside which Catalog Service and PostgreSQL can talk to each other using the container name instead of an IP address or a hostname. You can run this command from any Terminal window:
+
+$ docker network create catalog-network
+
+Next, verify that the network has been successfully created:
+
+$ docker network ls
+
+NETWORK ID
+
+NAME
+
+178c7a048fa9 catalog-network
+
+...
+
+DRIVER bridge
+
+SCOPE local
+
+You can then start a PostgreSQL container, specifying that it should be part of the catalog-network you just created. Using the --net argument ensures the container will join the specified network and rely on the Docker built-in DNS server:
+$ docker run -d \ --name polar-postgres \ --net catalog-network \ -e POSTGRES_USER=user \ -e POSTGRES_PASSWORD=password \ -e POSTGRES_DB=polardb_catalog \ -p 5432:5432 \ postgres:14.4
+
+If the command fails, you might have the PostgreSQL container from chapter 5 still running. Remove it with docker rm -fv polar-postgres and run the previous command again.
+
+6.2.2
+
+Containerizing Spring Boot with Dockerfiles
+Cloud native applications are self-contained. Spring Boot lets you package your applications as standalone JARs, including everything they need to run except the runtime environment. That makes the containerization very straightforward, since all you need in a container image besides the JAR artifact is an operating system and a JRE. This section will show you how to containerize the Catalog Service application using a Dockerfile.
+First, you need to identify which image you want to base yours on. You could choose an Ubuntu image, as we did before, and then explicitly install the JRE, or you could choose a base image that provides a JRE already, which is more convenient. All the major OpenJDK distributions have a related image available on Docker Hub. Feel free to choose the one you prefer. In this example I'll be using Eclipse Temurin 17, which is the same OpenJDK distribution I've been using locally so far. Then you need to copy the JAR file of Catalog Service into the image itself. Finally, declare that the entry point for the container execution is the command to run the application on the JRE.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+192
+
+CHAPTER 6 Containerizing Spring Boot
+
+Open your Catalog Service project (catalog-service), and create an empty file called Dockerfile (with no extension) in the root folder. That file will contain the recipe for containerizing your application.
+
+Listing 6.2 Dockerfile for describing the Catalog Service image
+
+Ubuntu base image with the Eclipse Temurin distribution of the JRE pre-installed
+FROM eclipse-temurin:17
+
+Changes the current working directory to "workspace"
+
+WORKDIR workspace
+
+ARG JAR_FILE=build/libs/*.jar
+
+COPY ${JAR_FILE} catalog-service.jar
+
+Builds argument specifying the location of the application JAR file in your project
+Copies the application JAR file from the local machine into the image
+
+ENTRYPOINT ["java", "-jar", "catalog-service.jar"]
+
+Sets the container entry point to run the application
+
+This Dockerfile declares a JAR_FILE argument that can be specified when creating the image with the docker build command.
+Before moving on, you need to build the JAR artifact for the Catalog Service application. Open a Terminal window and navigate to the Catalog Service project's root folder. First, build the JAR artifact:
+
+$ ./gradlew clean bootJar
+
+By default, the Dockerfile script will copy the application's JAR file from the location path used by Gradle: build/libs/. So if you're using Gradle, you can build the container image by running this command:
+
+$ docker build -t catalog-service .
+
+If you're using Maven, you can specify the location used by Maven as a build argument with the following command (don't forget the final dot):
+
+$ docker build --build-arg JAR_FILE=target/*.jar -t catalog-service .
+
+In either case, you'll end up with your Catalog Service application packaged as a container image. Since we haven't specified any version, the image will be tagged as latest automatically. Let's verify that it works.
+Remember the two aspects I covered in the previous section: port forwarding and using the Docker built-in DNS server. You can handle them by adding two arguments to the docker run command:
+ -p 9001:9001 will map port 9001 inside the container (where the Catalog Service is exposing its services) to port 9001 on your localhost.
+ --net catalog-network will connect the Catalog Service container to the catalognetwork you previously created so that it can contact the PostgreSQL container.
+That is still not enough. In the previous chapter, we set the spring.datasource.url property for Catalog Service to jdbc:postgresql://localhost:5432/polardb_catalog.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+193
+
+Since it points to localhost, it will not work from within a container. You already know how to configure a Spring Boot application from the outside without having to recompile it, right? An environment variable will do. We need to overwrite the spring.datasource.url property and specify the same URL, replacing localhost with the PostgreSQL container name: polar-postgres. Using another environment variable, we can also enable the testdata Spring profile to trigger the creation of test data in the catalog:
+$ docker run -d \ --name catalog-service \ --net catalog-network \ -p 9001:9001 \ -e SPRING_DATASOURCE_URL=
+jdbc:postgresql://polar-postgres:5432/polardb_catalog \
+-e SPRING_PROFILES_ACTIVE=testdata \ catalog-service
+
+That's quite a long command, isn't it? You won't use the Docker CLI for long, though, I promise. Later in the chapter I'll introduce Docker Compose.
+Open a Terminal window, call the application, and verify that it works correctly, as it did in chapter 5:
+$ http :9001/books
+
+When you're done, remember to delete both containers:
+$ docker rm -f catalog-service polar-postgres
+
+The approach you've just followed is perfectly fine for experimenting with Docker in your development environment and understanding how images work, but you'll need to consider several aspects before achieving a production-grade image. That's the topic of the next section.
+
+6.2.3
+
+Building container images for production
+Getting started with Dockerfiles might not be that difficult at the beginning, but building production-grade images can be challenging. In this section, you'll see how to improve the image you built in the previous section.
+You'll use the layered-JAR feature provided by Spring Boot to build more efficient images. Then you'll consider essential security aspects related to container images. Finally, I'll discuss some factors to consider when choosing between Dockerfiles and Cloud Native Buildpacks for containerizing applications.
+PERFORMANCE When building container images, you should consider performance at build time and at run time. The layered architecture characterizing OCI images enables the caching and reusing of unchanged layers when building an image. Container registries store
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+194
+
+CHAPTER 6 Containerizing Spring Boot
+
+images by layers, so that when you pull a new version, only the changed layers are downloaded. That is quite an advantage in a cloud environment, considering the time and bandwidth you'll save for all your application instances.
+In the previous section, you copied the Catalog Service standalone JAR file into a layer in the image. As a result, whenever you change something in your application, the whole layer must be rebuilt. Consider the scenario where you just add a new REST endpoint to your application. Even if all the Spring libraries and dependencies are unchanged, and the only difference is in your own code, you must rebuild the whole layer, since everything is together. We can do better. And Spring Boot can help us.
+Putting uber-JARs inside a container image has never been efficient. A JAR artifact is a compressed archive containing all the dependencies, classes, and resources used by the application. All those files are organized in folders and subfolders within the JAR. We could expand standard JAR artifacts and put each folder on a different container image level. Starting with version 2.3, Spring Boot made that even more efficient by introducing a new way of packaging applications as JAR artifacts: the layeredJAR mode. And since Spring Boot 2.4, that's been the default mode, so you don't need any extra configuration to use the new functionality.
+Applications packaged using the layered-JAR mode are made up of layers, similar to how container images work. This new feature is excellent for building more efficient images. When using the new JAR packaging, we can expand the JAR artifact and then create a different image layer for each JAR layer. The goal is to have your own classes (which change more frequently) on a separate layer from the project dependencies (which change less frequently).
+By default, Spring Boot applications are packaged as JAR artifacts made up of the following layers, starting from the lowest:
+ dependencies--For all the main dependencies added to the project  spring-boot-loader--For the classes used by the Spring Boot loader component  snapshot-dependencies--For all the snapshot dependencies  application--For your application classes and resources
+If you consider the previous scenario where you added a new REST endpoint to an existing application, only the application layer must be built when you containerize it. Moreover, when you upgrade the application in production, only that new layer must be downloaded to the nodes where the container is running, making the upgrade faster and cheaper (especially on cloud platforms, which bill for the bandwidth used).
+Let's update the previous Dockerfile to containerize Catalog Service more efficiently using the layered-JAR mode. Using this new strategy means doing some preparation work to copy the JAR file into the image and expand it into the four layers described previously. We don't want to keep the original JAR file inside the image, or our optimization plan will not work. Docker provides a solution for that: multi-stage builds.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+195
+
+We'll divide the work into two stages. In the first stage we extract the layers from the JAR file. The second stage is where we place each JAR layer into a separate image layer. In the end, the result of the first stage is discarded (including the original JAR file), while the second stage will produce the final container image.
+
+Listing 6.3 More efficient Dockerfile to build a Catalog Service image
+
+OpenJDK base image for the second stage
+
+OpenJDK base image for the first stage
+
+FROM eclipse-temurin:17 AS builder
+
+Builds argument specifying the location of the application JAR file in your project
+
+WORKDIR workspace ARG JAR_FILE=build/libs/*.jar COPY ${JAR_FILE} catalog-service.jar RUN java -Djarmode=layertools -jar
+ catalog-service.jar extract
+FROM eclipse-temurin:17 WORKDIR workspace
+
+Copies the application JAR file from the local machine into the image inside the "workspace" folder
+Extracts the layers from the archive applying the layered-JAR mode
+
+COPY --from=builder workspace/dependencies/ ./ COPY --from=builder workspace/spring-boot-loader/ ./ COPY --from=builder workspace/snapshot-dependencies/ ./ COPY --from=builder workspace/application/ ./ ENTRYPOINT ["java",
+ "org.springframework.boot.loader.JarLauncher"]
+
+Copies each JAR layer from the first stage to the second stage inside the "workspace" folder
+
+Uses the Spring Boot Launcher to start the application from the layers rather than an uber-JAR
+
+NOTE What if you want to change the configuration for the layers in the JAR file? As always, Spring Boot provides sensible defaults, but you can customize it and adapt it to your needs. Perhaps your project has internal shared dependencies you might want to place in a separate layer, since they change more often than third-party dependencies. You can do that through the Spring Boot Gradle or Maven plugin. For more information, refer to the Spring Boot documentation at https://spring.io/projects/spring-boot.
+
+The process for building and running the container is the same as before, but now the image is more efficient and is optimized at build and execution time. However, it's still not ready for production. What about security? That's the topic of the next section.
+SECURITY Security is a critical aspect that is too often underestimated by people getting started with Docker and containerization. You should be aware that containers run using the root user by default, potentially letting them get root access to the Docker host. You can mitigate the risk by creating a non-privileged user and using it to run the entrypoint process defined in the Dockerfile, following the principle of least privilege.
+Consider the Dockerfile you wrote for Catalog Service. You can improve it by adding new steps to create a new non-root user that will run the application.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+196
+
+CHAPTER 6 Containerizing Spring Boot
+
+Listing 6.4 More secure Dockerfile to build a Catalog Service image
+
+FROM eclipse-temurin:17 AS builder WORKDIR workspace ARG JAR_FILE=build/libs/*.jar COPY ${JAR_FILE} catalog-service.jar RUN java -Djarmode=layertools -jar catalog-service.jar extract
+
+FROM eclipse-temurin:17 RUN useradd spring USER spring
+
+Creates a "spring" user
+
+Configures "spring" as the current user
+
+WORKDIR workspace
+
+COPY --from=builder workspace/dependencies/ ./
+
+COPY --from=builder workspace/spring-boot-loader/ ./
+
+COPY --from=builder workspace/snapshot-dependencies/ ./
+
+COPY --from=builder workspace/application/ ./
+
+ENTRYPOINT ["java", "org.springframework.boot.loader.JarLauncher"]
+
+As previously noted, you should never store secrets like passwords or keys in a container image. Even if they are removed in an upper layer, they will remain intact in the original layer and be easily accessible.
+Finally, it's also critical to use up-to-date base images and libraries in your Dockerfile. Scanning your container images for vulnerabilities is a best practice that should be embraced and automated in your deployment pipeline. In chapter 3, you learned how to use grype to scan codebases for vulnerabilities. Now we'll also use it to scan a container image.
+Using the updated Dockerfile, build a new container image for Catalog Service. Open a Terminal window, navigate to the Catalog Service root folder, and run this command (don't forget the final dot):
+
+$ docker build -t catalog-service .
+
+Next, use grype to check if the newly created image contains any vulnerabilities:
+
+$ grype catalog-service
+
+Have you found any high-severity vulnerabilities? Discussing supply chain security and related risk management is out of scope for this book. I want to show you how to perform and automate vulnerability scanning for application artifacts, but I'll leave it up to you to follow up on the scan results. I can't stress enough how important it is to define a security strategy in your organization and automate, as much as possible, its compliance verification throughout the whole value stream.
+In this section, I mentioned a few essential aspects you should consider when building production-grade container images, but there's even more to cover. Is there another way to build production-grade container images? The following section introduces a different option.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+197
+
+DOCKERFILES OR BUILDPACKS Dockerfiles are very powerful, and they give you complete fine-grained control over the result. However, they require extra care and maintenance and can lead to several challenges in your value stream.
+As a developer, you might not want to deal with all the performance and security concerns we've discussed. You might prefer to focus on the application code instead. After all, one reason to move to the cloud is to deliver value to customers faster. Adding the Dockerfile step and considering all those issues might not be for you.
+As an operator, it might be challenging to control and secure the supply chain within the organization when container images are built from a Dockerfile. It's pretty common to invest some time in scripting the perfect Dockerfile and to copy that into multiple repositories for different applications. But it's hard to keep all teams on the same page, verify adherence to the approved Dockerfile, synchronize any changes throughout the organization, and understand who is responsible for what.
+Cloud Native Buildpacks provide a different approach, focusing on consistency, security, performance, and governance. As a developer, you get a tool that automatically builds a production-ready OCI image from your application source code without having to write a Dockerfile. As an operator, you get a tool that defines, controls, and secures application artifacts within the entire organization.
+Ultimately, the decision to use a Dockerfile or a tool like Buildpacks depends on your organization and requirements. Both approaches are valid and are used in production. In general, my recommendation is to use Buildpacks unless it makes sense not to.
+
+NOTE Another option for packaging Java applications as container images without writing a Dockerfile is using Jib, a Gradle and Maven plugin developed by Google (https://github.com/GoogleContainerTools/jib).
+
+In the next section and the rest of the book, we'll use Cloud Native Buildpacks rather than Dockerfiles. It was important for me to show you how a Dockerfile works, because it makes understanding the container image features and layers easier. Furthermore, I wanted to show you how to write a basic Dockerfile for containerizing a Spring Boot application to highlight what's needed and illustrate the execution of the application JAR from within the container. Finally, it will be easier for you to debug containers when something goes wrong, even if they're automatically generated by Buildpacks, because you now know how to build images from scratch. If you'd like to learn more about Dockerfiles for Spring Boot applications, I recommend you look at the official documentation (https://spring.io/projects/spring-boot).
+
+6.2.4
+
+Containerizing Spring Boot with Cloud Native Buildpacks
+Cloud Native Buildpacks (https://buildpacks.io) is a project hosted by the CNCF to "transform your application source code into images that can run on any cloud." When introducing containers in chapter 1, I underlined how PaaS platforms like
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+198
+
+CHAPTER 6 Containerizing Spring Boot
+
+Heroku and Cloud Foundry are actually using containers behind the scenes, converting your application source code into containers before running them. Buildpacks is the tool they use to accomplish that.
+Cloud Native Buildpacks has been developed and advanced based on Heroku and Pivotal's many years of experience running cloud native applications as containers on their PaaS platforms. It's a mature project, and since Spring Boot 2.3, it has been integrated natively in the Spring Boot Plugin for both Gradle and Maven, so you're not required to install the dedicated Buildpacks CLI (pack).
+These are some of its features:
+ It auto-detects the type of application and packages it without requiring a Dockerfile.
+ It supports multiple languages and platforms.  It's highly performant through caching and layering.  It guarantees reproducible builds.  It relies on best practices in terms of security.  It produces production-grade images.  It supports building native images using GraalVM.
+NOTE If you'd like to know more about Cloud Native Buildpacks, I recommend watching "Cloud Native Buildpacks with Emily Casey" (http://mng.bz/M0xB). Emily Casey is a member of the Buildpacks core team.
+The container generation process is orchestrated by a builder image containing the complete information on how to containerize your application. Such information is provided as a sequence of buildpacks, each dedicated to a specific aspect of the application (such as the operating system, OpenJDK, and JVM configuration). The Spring Boot Plugin adopts the Paketo Buildpacks builder, an implementation of the Cloud Native Buildpacks specification that provides support for many types of applications, including Java and Spring Boot ones (https://paketo.io).
+The Paketo builder component relies on a series of default buildpacks for the actual build operation. This structure is highly modular and customizable. You can add new buildpacks to the sequence (for example, to add a monitoring agent to the application), replace existing ones (for example, to replace the default Bellsoft Liberica OpenJDK with Microsoft OpenJDK), or even use a different builder image entirely.
+NOTE The Cloud Native Buildpacks project manages a registry where you can discover and analyze buildpacks you can use to containerize your applications, including all the buildpacks from the Paketo implementation (https:// registry.buildpacks.io).
+The Buildpacks integration provided by the Spring Boot Plugin can be configured in the build.gradle file located in your Catalog Service project. Let's configure the image name and define which Java version to use through an environment variable.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+199
+
+Listing 6.5 Configuration for containerizing Catalog Service
+
+The Spring Boot Plugin task to build an OCI image using Buildpacks
+bootBuildImage { imageName = "${project.name}"
+
+The name of the OCI image to build. The name is the same one defined in the Gradle configuration for the project. We rely on the implicit "latest" tag when working locally rather than a version number.
+
+environment = ["BP_JVM_VERSION" : "17.*"] }
+
+The JVM version to be installed in the image. It uses the latest Java 17 version.
+
+Go ahead and build the image by running the following command:
+
+$ ./gradlew bootBuildImage
+
+WARNING At the time of writing, the Paketo project is working on adding support for ARM64 images. You can follow the feature's progress on the Paketo Buildpacks project on GitHub: https://github.com/paketo-buildpacks/ stacks/issues/51. Until it's complete, you can still use Buildpacks to build containers and run them via Docker Desktop on Apple Silicon computers. However, the build process and the application startup phase will be slower than usual. Until official support is added, you can alternatively use the following command, pointing to an experimental version of Paketo Buildpacks with ARM64 support: ./gradlew bootBuildImage --builder ghcr.io/ thomasvitale/java-builder-arm64. Be aware that it's experimental and not ready for production. For more information, you can refer to the documentation on GitHub: https://github.com/ThomasVitale/paketo-arm64.
+The first time you run the task, it will take a minute to download the packages used by Buildpacks to create the container image. The second time, it will take only a few seconds. If you look closely at the output of the command, you can see all the steps performed by Buildpacks to generate the image. These steps include adding a JRE and using the layered JAR built by Spring Boot. The plugin accepts more properties to customize its behavior, such as providing your own builder component instead of Paketo's. Check the official documentation for the complete list of configuration options (https://spring.io/projects/spring-boot).
+Let's try running Catalog Service as a container once again, but this time we'll use the image generated by Buildpacks. Remember to start the PostgreSQL container first, following the instructions in section 6.2.1:
+$ docker run -d \ --name catalog-service \ --net catalog-network \ -p 9001:9001 \ -e SPRING_DATASOURCE_URL=
+jdbc:postgresql://polar-postgres:5432/polardb_catalog \
+-e SPRING_PROFILES_ACTIVE=testdata \ catalog-service
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+200
+
+CHAPTER 6 Containerizing Spring Boot
+
+WARNING If you're running the container on an Apple Silicon computer, the previous command might return a message like "WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8) and no specific platform was requested." In that case, you'll need to include this additional argument to the previous command (before the image name) until support for ARM64 is added to Paketo Buildpacks: --platform linux/amd64.
+Open a browser window, call the application on http://localhost:9001/books, and verify that it works correctly. When you're done, remember to delete both the PostgreSQL and Catalog Service containers:
+
+$ docker rm -f catalog-service polar-postgres
+
+Finally, you can remove the network you used to make Catalog Service communicate with PostgreSQL. You won't need it anymore, after I introduce Docker Compose in the next section:
+
+$ docker network rm catalog-network
+Since Spring Boot 2.4, you can also configure the Spring Boot plugin to publish the image directly to a container registry. To do so, you first need to add configuration for authenticating with the specific container registry in the build.gradle file.
+
+Listing 6.6 Configuration for containerizing Catalog Service
+
+bootBuildImage {
+
+imageName = "${project.name}" environment = ["BP_JVM_VERSION" : "17.*"]
+docker {
+
+Section to configure the connection with a container registry
+
+publishRegistry { username = project.findProperty("registryUsername") password = project.findProperty("registryToken") url = project.findProperty("registryUrl")
+} } }
+
+Section to configure authentication to the publishing container registry. The values are passed as Gradle properties.
+
+The details on how to authenticate with the container registry are externalized as Gradle properties both for flexibility (you can publish the image to different registries without changing the Gradle build) and for security (the token, in particular, should never be included in version control).
+Remember this golden rule of credentials: you should never give your password away. Never! If you need to delegate some service to access a resource on your behalf, you should rely on an access token. The Spring Boot plugin lets you use a password to authenticate with the registry, but you should use a token instead. In section 6.1.3, you generated a personal access token in GitHub to let you push images to the GitHub Container Registry from your local environment. If you don't know
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.2 Packaging Spring Boot applications as container images
+
+201
+
+its value anymore, feel free to generate a new one following the procedure I explained earlier in the chapter.
+Finally, you can build and publish the image by running the bootBuildImage task. With the --imageName argument, you can define a fully qualified image name as container registries require. With the --publishImage argument, you can instruct the Spring Boot plugin to push the image to the container registry directly. Also, remember to pass values for the container registry via the Gradle properties:
+$ ./gradlew bootBuildImage \ --imageName ghcr.io/<your_github_username>/catalog-service \ --publishImage \ -PregistryUrl=ghcr.io \ -PregistryUsername=<your_github_username> \ -PregistryToken=<your_github_token>
+TIP If you're working on ARM64 machines (such as Apple Silicon computers), you can add the --builder ghcr.io/thomasvitale/java-builder-arm64 argument to the previous command to use an experimental version of Paketo Buildpacks with ARM64 support. Be aware that it's experimental and not ready for production. For more information, you can refer to the documentation on GitHub: https://github.com/ThomasVitale/paketo-arm64. Without this workaround, until official support is added (https://github.com/paketo-buildpacks/ stacks/issues/51), you can still use Buildpacks to build containers and run them via Docker Desktop on Apple Silicon computers, but the build process and application startup phase will be slower than usual.
+Once the command completes successfully, go to your GitHub account, navigate to your profile page, and enter the Packages section. You should see a new catalog -service entry (by default, packages hosting container images are private), similar to what you saw with the my-java-image you published in section 6.1.3. If you click on the catalog-service entry, you'll find the ghcr.io/<your_github_username>/ catalog-service:latest image you just published (figure 6.11).
+However, the catalog-service package is not linked to your catalog-service source code repository yet. Later, I'll show you how to automate building and publishing your images with GitHub Actions, which makes it possible to publish images in the context of the source code repository from which they are built.
+For now, let's remove the catalog-service package that was created when you published the image so that it won't cause any conflicts once you start using GitHub Actions to publish images. From the catalog-service package page (figure 6.11), click Package Settings in the sidebar menu, scroll to the bottom of the settings page, and click Delete This Package (figure 6.12).
+NOTE So far, we've been using the implicit latest tag for naming container images. That's not recommended for production scenarios. In chapter 15, you'll see how to handle versions when releasing your applications. Until then, we'll rely on the implicit latest tag.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+202
+
+CHAPTER 6 Containerizing Spring Boot
+
+Figure 6.11 Images published to the GitHub Container Registry are organized as "packages."
+Figure 6.12 Delete the catalog-service package created manually.
+6.3 Managing Spring Boot containers with Docker Compose
+Cloud Native Buildpacks lets you containerize Spring Boot applications quickly and efficiently without writing a Dockerfile yourself. But when it comes to running multiple containers, the Docker CLI can be a bit cumbersome. Writing commands in a Terminal window can be error-prone, hard to read, and challenging when it comes to applying version control.
+Docker Compose provides a better experience than the Docker CLI. Instead of a command line, you work with YAML files that describe which containers you want to run and their characteristics. With Docker Compose, you can define all the applications and services composing your system in one place, and you can manage their life cycles together.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.3 Managing Spring Boot containers with Docker Compose
+
+203
+
+In this section, you'll configure the execution of the Catalog Service and PostgreSQL containers using Docker Compose. Then you'll learn how to debug a Spring Boot application running within a container.
+If you have installed Docker Desktop for Mac or Docker Desktop for Windows, you already have Docker Compose installed. If you're on Linux, visit the Docker Compose installation page at www.docker.com and follow the instructions for your distribution. In any case, you can verify that Docker Compose is correctly installed by running the command docker-compose --version.
+
+6.3.1
+
+Using Docker Compose to manage the container life cycle
+The Docker Compose syntax is very intuitive and self-explanatory. Often, it can be mapped one-to-one to Docker CLI arguments. The two root sections of a dockercompose.yml file are version, where you specify which syntax of Docker Compose you want to use, and services, containing the specifications for all the containers you want to run. Other optional root-level sections you may add are volumes and networks.
+
+NOTE If you don't add any network configuration, Docker Compose will automatically create one for you and make all the containers in the file join it. That means they can interact with each other through their container names, relying on Docker's built-in DNS server.
+
+It's good practice to gather all deployment-related scripts in a separate codebase and, possibly, in a separate repository. Go ahead and create a new polar-deployment repository on GitHub. It'll contain all the Docker and Kubernetes scripts needed to run the applications composing the Polar Bookshop system. Inside the repository, create a "docker" folder to host the Docker Compose configuration for Polar Bookshop. In the source code accompanying the book, you can refer to Chapter06/06-end/ polar-deployment for the final result.
+In the polar-deployment/docker folder, create a docker-compose.yml file, and define the services to run as follows.
+
+Listing 6.7 Docker Compose file describing the catalog services
+
+The Docker Compose syntax version
+
+The section containing all the containers to run
+
+The image used to run the
+container
+
+version: "3.8" services:
+catalog-service:
+
+The section describing the catalog-service container
+
+depends_on: - polar-postgres
+image: "catalog-service"
+
+Catalog Service should start after the PostgreSQL database.
+
+container_name: "catalog-service"
+
+ports: - 9001:9001
+
+The section listing the port mappings
+
+The name of the container
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+204
+
+CHAPTER 6 Containerizing Spring Boot
+
+The section listing the
+environment variables
+
+environment:
+
+- BPL_JVM_THREAD_COUNT=50 - SPRING_DATASOURCE_URL=
+jdbc:postgresql://polar-postgres:5432/polardb_catalog
+- SPRING_PROFILES_ACTIVE=testdata
+polar-postgres:
+
+A Paketo Buildpacks environment variable to configure the number of threads for memory calculation
+
+image: "postgres:14.4" container_name: "polar-postgres" ports:
+
+Enables the "testdata" Spring profile
+
+- 5432:5432 environment:
+- POSTGRES_USER=user - POSTGRES_PASSWORD=password
+
+The section describing the polar-postgres container
+
+- POSTGRES_DB=polardb_catalog
+
+You might have noticed the presence of an additional environment variable for the Catalog Service container. In chapter 15, you'll learn about the Java memory calculator provided by Paketo Buildpacks and how to configure CPU and memory for Spring Boot applications. For now, it's enough to know that the BPL_JVM_THREAD_COUNT environment variable is used to configure the number of threads memory should be allocated for in the JVM stack. The default value for Servlet-based applications is 250. In chapter 3, we used a low value for the Tomcat thread pool, and it's good to do the same for the JVM memory configuration to keep the container's memory usage low locally. You're going to deploy many containers throughout the book (both applications and backing services), and such configuration helps make that possible without overloading your computer.
+Docker Compose configures both containers on the same network by default, so you don't need to specify one explicitly, as you did previously.
+Let's see now how to spin them up. Open a Terminal window, navigate to the folder containing the file, and run the following command to start the containers in detached mode:
+
+$ docker-compose up -d
+
+When the command is done, try calling the Catalog Service application at http:// localhost:9001/books and verify that it works correctly. Then keep your containers running and move on to the next section, where you'll debug the Catalog Service application.
+
+6.3.2
+
+Debugging Spring Boot containers
+When running a Spring Boot application as standard Java from your IDE, you can specify whether you want to run it in debug mode. If you do, the IDE will attach a debugger to the local Java process running your application. However, when you run it from within a container, your IDE can't do that anymore because the process is not running on the local machine.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.3 Managing Spring Boot containers with Docker Compose
+
+205
+
+Fortunately, Spring Boot applications running in a container can be debugged almost as easily as when running locally. First you need to instruct the JVM inside the container to listen for debug connections on a specific port. The container image produced by Paketo Buildpacks supports dedicated environment variables for running the application in debug mode (BPL_DEBUG_ENABLED and BPL_DEBUG_PORT). Then you need to expose the debug port outside the container so that your IDE can reach it. Figure 6.13 illustrates how it works.
+
+GET http:/ / localhost:9001 You
+Attach to localhost:8001
+
+9001 8001 9001 8001
+
+Docker network
+Container
+Port mapping
+
+Port mapping
+
+catalog-service
+
+Remote debugger
+Figure 6.13 From a container, you can expose as many ports as you want. For Catalog Service, expose both the server port and the debug port.
+
+Next, update your docker-compose.yml file to configure the Catalog Service application for debugging.
+
+Listing 6.8 Configuring Catalog Service to run in debug mode
+
+version: "3.8" services:
+
+catalog-service: depends_on: - polar-postgres image: "catalog-service"
+
+The port where the JVM will listen for debug connections
+
+container_name: "catalog-service" ports:
+- 9001:9001 - 8001:8001
+
+Activates the JVM configuration for accepting debug connections (provided by Buildpacks)
+
+environment: - BPL_JVM_THREAD_COUNT=50 - BPL_DEBUG_ENABLED=true - BPL_DEBUG_PORT=8001
+
+Debug connections are accepted via a socket on port 8001 (provided by Buildpacks).
+
+- SPRING_DATASOURCE_URL=
+jdbc:postgresql://polar-postgres:5432/polardb_catalog
+
+- SPRING_PROFILES_ACTIVE=testdata
+
+...
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+206
+
+CHAPTER 6 Containerizing Spring Boot
+
+From a Terminal window, navigate to the folder where the docker-compose.yml file is located, and rerun the following command:
+$ docker-compose up -d
+You'll notice that Docker Compose is smart enough to know that the PostgreSQL container configuration is unchanged, and it will do nothing about it. Instead, it will reload the Catalog Service container with the new configuration.
+Then, in your IDE of choice, you need to configure a remote debugger and point it to port 8001. Refer to your IDE's documentation to find the instructions on how to do that. Figure 6.14 shows how to configure a remote debugger in IntelliJ IDEA.
+
+Figure 6.14 Configuration to debug a containerized Java application from IntelliJ IDEA
+Once you run the Catalog Service, you can debug it as though it were running locally. That's it for this section. You can stop and remove both containers with the follow-
+ing command from the same folder where you keep your docker-compose.yml file:
+$ docker-compose down
+NOTE In this book I'm only covering those Docker topics needed in your journey to successfully deploy Spring Boot applications in production with
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.4 Deployment pipeline: Package and publish
+
+207
+
+Kubernetes. If you're interested in learning more about Docker images, networks, volumes, security, and architecture, refer to the official documentation on https://docs.docker.com. Also, Manning has a few books in its catalog on the subject, such as Learn Docker in a Month of Lunches by Elton Stoneman (Manning, 2020) and Docker in Practice, second edition, by Ian Miell and Aidan Hobson Sayers (Manning, 2019).
+
+When you make changes to an application, you don't want to build and publish a new image manually. That's a job for an automated workflow engine like GitHub Actions. The following section will show you how to complete the commit stage of the deployment pipeline we started in chapter 3.
+
+6.4 Deployment pipeline: Package and publish
+In chapter 3, we started implementing a deployment pipeline to support continuous delivery for the Polar Bookshop project. Continuous delivery is a holistic engineering approach for quickly, reliably, and safely delivering high-quality software. The deployment pipeline is the primary pattern for automating the entire journey from code commit to releasable software. We identified three main stages for the deployment pipeline: commit stage, acceptance stage, and production stage.
+We'll continue focusing on the commit stage. After a developer commits new code to the mainline, this stage goes through build, unit tests, integration tests, static code analysis, and packaging. At the end of this stage, an executable application artifact is published to an artifact repository. That is a release candidate. Chapter 3 covered all the main steps except for the final packaging and publishing of a release candidate. That's what you'll see in this section.
+
+6.4.1
+
+Building release candidates in the commit stage
+After running static code analysis, compilation, unit tests, and integration tests, it's time to package the application as an executable artifact and publish it. In our case, the executable artifact is a container image that we'll publish to a container registry.
+An essential idea in continuous delivery, also present in the 15-Factor methodology, is that you should build artifacts only once. At the end of the commit stage, we'll produce a container image that we can reuse in any following stage in the deployment pipeline up to production. If the pipeline proves something is wrong (a test fails) at any point, the release candidate is rejected. If the release candidate goes through all subsequent stages successfully, it's proven to be ready for deployment in production.
+After we build an executable artifact, we can perform additional operations before publishing it. For example, we could scan it for vulnerabilities. That's what we're going to do with grype, much as we did for the codebase. A container image includes application libraries but also system libraries that were not included in the previous security analysis. That's why we need to scan both the codebase and the artifact for vulnerabilities. Figure 6.15 illustrates the new steps we will add to the commit stage for building and publishing a release candidate.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+208
+Developer
+Push
+
+CHAPTER 6 Containerizing Spring Boot Deployment pipeline - commit stage (part 2)
+
+Check out source code
+
+Source code vulnerability scanning
+
+Build
+
+Unit tests Integration tests
+
+Package as container image
+
+OCI image vulnerability scanning
+
+Publish container image
+Push
+
+Container registry
+Figure 6.15 At the end of the commit stage, a release candidate is published to an artifact repository. In this case, a container image is published to a container registry.
+
+Once a release candidate is published, several parties can download it and use it, including the next stages in the deployment pipeline. How can we ensure that all interested parties use a legitimate container image from the Polar Bookshop project, and not one that has been compromised? We can achieve that by signing the image. After the publishing step, we could add a new step for signing the release candidate. For example, we could use Sigstore (www.sigstore.dev), a non-profit service that provides open source tools for signing, verifying, and protecting software integrity. If you're interested in this subject, I recommend visiting the project's website.
+In the following section, I'll show you how to implement the new steps in the commit stage of our deployment pipeline.
+
+6.4.2
+
+Publishing container images with GitHub Actions
+GitHub Actions is an engine that you can use to automate software workflows directly from your GitHub repositories. Workflow definitions are conventionally stored in a .github/workflows directory placed in the root of a repository on GitHub.
+In chapter 3, we started developing a workflow to implement the commit stage of the deployment pipeline for Catalog Service. Let's now continue the implementation by adding further steps to package and publish the application.
+From your Catalog Service project (catalog-service), open the workflow definition for the commit stage (.github/workflows/commit-stage.yml) and define a few environment variables to store some essential facts you'll need when building a container
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.4 Deployment pipeline: Package and publish
+
+209
+
+image for the application. By using environment variables, you can easily change which container registry you use or the version for the release artifact. Remember to add your GitHub username, all in lowercase, instead of the placeholder in the following listing. Chapter 15 will cover software release strategies, but until then we're going to tag every image with latest instead of a version number.
+
+Listing 6.9 Configuring facts about the release candidate
+
+name: Commit Stage on: push
+
+env: REGISTRY: ghcr.io
+
+Uses the GitHub Container Registry
+
+IMAGE_NAME: <your_github_username>/catalog-service
+
+VERSION: latest
+jobs: ...
+
+For the moment, any new image will be tagged as "latest".
+
+The name of the image. Remember to add your GitHub username, all in lowercase.
+
+Next let's add a new "Package and Publish" job to the workflow. If the "Build and Test" job completes successfully, and the workflow runs on the main branch, the new job will be executed. We'll use the same strategy we used locally to package Catalog Service as a container image, relying on the Buildpacks integration provided by the Spring Boot Gradle plugin. Notice that we are not pushing the image directly. That's because we first want to scan the image for vulnerabilities, which we'll do in a moment. For now, update the commit-stage.yml file as follows.
+
+Listing 6.10 Packaging the application as an OCI image using Buildpacks
+name: Commit Stage on: push
+
+Runs the job only if the
+
+env: REGISTRY: ghcr.io IMAGE_NAME: <your_github_username>/catalog-service
+
+"build" job
+
+VERSION: latest
+
+completes
+
+successfully jobs:
+
+Runs the job on an
+Ubuntu 22.04
+machine
+
+build: ...
+package:
+
+The job's unique identifier
+
+name: Package and Publish
+
+if: ${{ github.ref == 'refs/heads/main' }}
+
+needs: [ build ]
+
+runs-on: ubuntu-22.04
+
+Permission to upload
+
+Runs the job only on the main branch
+
+permissions:
+
+images to GitHub
+
+Permission to check out the
+current Git repository
+
+contents: read
+
+Container Registry
+
+packages: write
+
+security-events: write steps:
+- name: Checkout source code
+
+Permission to submit security events to GitHub
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+210
+
+CHAPTER 6 Containerizing Spring Boot
+
+uses: actions/checkout@v3 - name: Set up JDK
+uses: actions/setup-java@v3 with:
+
+Checks out the current Git repository (catalog-service)
+
+distribution: temurin java-version: 17 cache: gradle
+
+Installs and configures a Java runtime
+
+- name: Build container image run: | chmod +x gradlew ./gradlew bootBuildImage \
+
+Relies on the Buildpacks integration in Spring Boot to build a container image and defines the name for the release candidate
+
+--imageName
+ ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+
+After packaging the application as a container image, let's update the commitstage.yml file to use grype to scan the image for vulnerabilities and publish a report to GitHub, similar to what we did in chapter 3. Finally, we can authenticate with the container registry and push the image representing our release candidate.
+
+Listing 6.11 Scanning the image for vulnerabilities and publishing it
+
+name: Commit Stage on: push
+
+env: REGISTRY: ghcr.io IMAGE_NAME: polarbookshop/catalog-service VERSION: latest
+
+jobs:
+
+build:
+
+...
+
+package:
+
+...
+
+steps:
+
+- name: Checkout source code
+
+Scans the release
+candidate image for vulnerabilities using grype
+
+... - name: Set up JDK
+... - name: Build container image
+... - name: OCI image vulnerability scanning
+uses: anchore/scan-action@v3
+
+id: scan with:
+image:
+
+The image to scan is the release candidate.
+
+ ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+
+fail-build: false severity-cutoff: high acs-report-enable: true
+
+It won't fail the build if vulnerabilities are found in the image.
+
+- name: Upload vulnerability report uses: github/codeql-action/upload-sarif@v2 if: success() || failure()
+
+Uploads the security vulnerability report to GitHub (SARIF format)
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+6.4 Deployment pipeline: Package and publish
+
+211
+
+Authenticates with GitHub Container Registry
+
+with: sarif_file: ${{ steps.scan.outputs.sarif }}
+- name: Log into container registry
+
+The registry value as defined in the environment variable earlier
+
+uses: docker/login-action@v2 with:
+registry: ${{ env.REGISTRY }} username: ${{ github.actor }}
+
+The GitHub username of the current user, provided by GitHub Actions
+
+password: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Publish container image
+
+run: docker push
+ ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+
+Pushes the release candidate to the registry
+
+The token needed to authenticate with the registry, provided by GitHub Actions
+
+In listing 6.11 we do not fail the workflow if serious vulnerabilities are discovered. However, you can find the scanning results in the Security section of your catalogservice GitHub repository. At the time of writing, no high or critical vulnerabilities are found in the Catalog Service project, but things might be different in the future. As already mentioned in chapter 3, in a real-world scenario, I recommend that you configure and tune grype carefully and according to your company's policies regarding supply chain security, and make the workflow fail if the result is not compliant (setting the fail-build property to true). For more information, refer to the official grype documentation (https://github.com/anchore/grype).
+After completing the commit stage of the deployment pipeline, make sure your catalog-service GitHub repository is public. Then push your changes to the main branch of your remote repository, and see the workflow execution results in the Actions tab.
+
+WARNING The action of uploading the vulnerability report requires the GitHub repository to be public. It works for private repositories only if you have an enterprise subscription. If you prefer to keep your repository private, you'll need to skip the "Upload vulnerability report" step. Throughout the book, I'll assume all the repositories you create on GitHub for the Polar Bookshop project are public.
+
+Images published from GitHub Actions and named after a repository are automatically associated. After the workflow completes its execution, you'll find a Packages section in the sidebar of your GitHub catalog-service repository's main page, with a "catalog-service" item (figure 6.16). Click on that item, and you'll be directed to the container image repository for Catalog Service.
+
+NOTE Images published to GitHub Container Registry will have the same visibility as the related GitHub code repository. If no repository is associated with the image, it's private by default. Throughout the book I'll assume that all the images you build for Polar Bookshop are publicly accessible via the GitHub Container Registry. If that's not the case, you can go to the package's
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+212
+
+CHAPTER 6 Containerizing Spring Boot
+
+Figure 6.16 When using the GitHub Container Registry, you can store container images next to the source code.
+main page, select Package Settings from the sidebar menu, scroll to the bottom of the settings page, and make the package public by clicking the Change Visibility button.
+Great job! So far you've built a Spring Boot application that exposes a REST API and interacts with a relational database; you wrote unit and integration tests for the application; you handled the database schema with Flyway so it was production-ready; and you ran everything within containers and dealt with image generation, Docker, Cloud Native Buildpacks, and vulnerability scanning. The next chapter will complete the first part of this cloud native journey toward production by diving deep into Kubernetes. But before moving on, take a break, congratulate yourself on what you have achieved so far, and perhaps celebrate with a beverage of your choice.
+Polar Labs
+Feel free to apply what you've learned in this chapter to Config Service. 1 Configure the Cloud Native Buildpacks integration and package the application as a container. 2 Update your Docker Compose file to run Config Service as a container.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+213
+
+3 Configure Catalog Service with the Config Service URL via the SPRING_CLOUD_ CONFIG_URI environment variable, relying on the Docker built-in DNS.
+4 Bootstrap a deployment pipeline for Config Service by implementing the workflow for the commit stage using GitHub Actions.
+You can refer to the Chapter06/06-end folder in the code repository accompanying the book to see the final result (https://github.com/ThomasVitale/cloud-native-spring -in-action).
+Summary
+ Container images are lightweight executable packages that include everything needed to run the application inside.
+ Each image is made up of several layers, and each layer represents a modification produced by the corresponding instruction. The final artifact can be run as a container.
+ When you run a container, an additional writable layer is added on top of the image layers.
+ The standard way to define a container image is by listing the sequence of instructions in a particular file called a Dockerfile.
+ A Dockerfile acts as a recipe containing all the steps to build the desired image.  Performance and security are important concerns when building container
+images. For example, you shouldn't store secrets in any image layer, and never run the container with a root user.  A container registry is to OCI images what a Maven repository is to Java libraries. Examples of container registries are Docker Hub and GitHub Container Registry.  You can package Spring Boot applications as container images in different ways.  Dockerfiles give you maximum flexibility but make it your responsibility to configure everything you need.  Cloud Native Buildpacks (integrated with the Spring Boot Plugin) let you build OCI images directly from the source code, optimizing security, performance, and storage for you.  When you run Spring Boot applications as containers, you should consider which ports you want to make available to the outside world (such as 8080) and whether containers should communicate with each other. If yes, you can use the Docker DNS server to contact containers in the same network by container name instead of IP or hostname.  If you want to debug an application running as a container, remember to expose the debug port.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+214
+
+CHAPTER 6 Containerizing Spring Boot
+
+ Docker Compose is a client for interacting with the Docker server, and it provides a better user experience than Docker CLI. From a YAML file, you can manage all your containers.
+ You can use GitHub Actions to automate the process of packaging an application as a container image, scanning it for vulnerabilities, and publishing it to a container registry. That's part of the commit stage of a deployment pipeline.
+ The outcome of the commit stage of a deployment pipeline is a release candidate.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Kubernetes fundamentals for Spring Boot
+This chapter covers
+ Moving from Docker to Kubernetes  Deploying Spring Boot applications on
+Kubernetes  Understanding service discovery and load
+balancing  Building scalable and disposable applications  Establishing a local Kubernetes development
+workflow  Validating Kubernetes manifests with GitHub
+Actions
+In the previous chapter, you learned about Docker and the main characteristics of images and containers. With Buildpacks and Spring Boot, you can build a productionready image in one command, without even having to write your own Dockerfile or install additional tools. With Docker Compose, you can simultaneously control multiple applications, which is convenient for architectures like microservices. But what if a container stops working? What if the machine where your containers are running (the Docker host) crashes? What if you want to scale your applications?
+215
+Licensed to Zhigang Li <lzg14@qq.com>
+
+216
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+This chapter will introduce Kubernetes into your workflow to address issues that Docker alone cannot.
+As a developer, it's not your job to configure and manage a Kubernetes cluster. You would probably use either a managed service offered by a cloud provider such as Amazon, Microsoft, or Google, or a service managed on premises by a specialized team in your organization (commonly known as the platform team). For now you'll use a local Kubernetes cluster provisioned with minikube. Later in the book you'll use a managed Kubernetes service offered by a cloud provider.
+In our daily job as developers, we don't want to spend too much time on infrastructural concerns, but it's critical to know the basics. Kubernetes has become the de facto orchestration tool and the common language for talking about containerized deployments. Cloud vendors have been building platforms on top of Kubernetes to provide a better experience for developers. Once you know how Kubernetes works, it'll be straightforward to use those platforms, because you'll be familiar with the language and the abstractions.
+This chapter will walk you through the main features of Kubernetes and teach you how to create and manage Pods, Deployments, and Services for your Spring Boot applications. Along the way you'll enable graceful shutdown for your applications, learn how to scale them, and learn how to use the service discovery and load balancing features provided by Kubernetes. You'll also learn to automate your local development workflow with Tilt, visualize your workloads with Octant, and validate your Kubernetes manifests.
+NOTE The source code for the examples in this chapter is available in the Chapter07/07-begin and Chapter07/07-end folders, which contain the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+7.1 Moving from Docker to Kubernetes
+With Docker Compose, you can manage the deployment of several containers at once, including the configuration of networks and storage. That is extremely powerful, but it's limited to one machine.
+Using Docker CLI and Docker Compose, the interaction happens with a single Docker daemon that manages Docker resources on a single machine, called the Docker host. Furthermore, it's not possible to scale a container. All of this is limiting when you need cloud native properties like scalability and resilience for your system. Figure 7.1 shows how you target a single machine when using Docker.
+You learned in chapter 2 that we change our point of view when we move from a container runtime like Docker to an orchestration platform like Kubernetes. With Docker, we deploy containers to an individual machine. With Kubernetes, we deploy containers to a cluster of machines, enabling scalability and resilience.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.1 Moving from Docker to Kubernetes
+
+217
+
+Docker CLI
+
+Uses
+
+API
+
+Docker Compose
+
+Uses
+
+Exposes
+
+Docker daemon Controls and manages
+
+Applications are deployed as containers to the same machine where the daemon runs.
+
+Container
+
+Container
+
+Container
+
+Container
+
+Container
+
+Container
+
+Provides a runtime environment for running containers
+A Docker host can be a physical or virtual machine.
+
+Docker host
+Figure 7.1 Docker clients interact with a Docker daemon that can only manage resources on the machine where it is installed, called the Docker host. Applications are deployed as containers to the Docker host.
+
+Kubernetes clients use an API to interact with the Kubernetes Control Plane, which is responsible for creating and managing objects in a Kubernetes cluster. In this new scenario, we still send commands to a single entity, but it acts on several machines rather than only one. Figure 7.2 shows the logical infrastructure when we use Kubernetes.
+These are the main components shown in figure 7.2:
+ Cluster--A set of nodes running containerized applications. It hosts the Control Plane and comprises one or more worker nodes.
+ Control Plane--The cluster component exposing the API and interfaces to define, deploy, and manage the life cycle of Pods. It comprises all the essential elements that implement the typical features of an orchestrator, like cluster management, scheduling, and health monitoring.
+ Worker nodes--Physical or virtual machines providing capacity such as CPU, memory, network, and storage so that containers can run and connect to a network.
+ Pod--The smallest deployable unit wrapping an application container.
+Now that you have a good understanding of the Kubernetes infrastructure, let's see how you can create and manage a Kubernetes cluster on your local machine.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+218
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+The Control Plane provides features like orchestration, scheduling, scaling, and self-healing.
+
+kubectl Uses API
+Uses GUI
+
+Exposes
+
+Kubernetes Control Plane Controls and manages
+
+Applications are deployed as Pods to the nodes of a cluster.
+A node can be a physical or virtual machine.
+
+Pod Pod Pod Pod Pod Pod Pod Pod Pod
+
+Pod Pod Pod Pod Pod Pod Pod Pod Pod
+
+A cluster is an abstraction to manage a group of nodes together.
+
+Worker node
+
+Worker node
+
+Kubernetes cluster
+
+Figure 7.2 Kubernetes clients interact with the Control Plane, which manages containerized applications in a cluster consisting of one or more nodes. Applications are deployed as Pods to the nodes of a cluster.
+
+7.1.1
+
+Working with a local Kubernetes cluster
+In chapter 2, we worked with minikube (https://minikube.sigs.k8s.io), a tool for running Kubernetes clusters on local environments. We used the minikube CLI to create a local Kubernetes cluster relying on the default configuration. In this section, you'll see how to define a custom configuration for minikube that you can use when initializing a new local Kubernetes cluster for deploying Polar Bookshop.
+
+NOTE If you haven't installed minikube yet, refer to the instructions in section A.3 of appendix A.
+
+Since we run minikube on top of Docker, remember to start the Docker Engine first. Then make sure the default cluster is not running by executing the minikube stop command. From now on, we won't use the default cluster. Instead, we'll create a custom one for working with Polar Bookshop. With minikube you can create and control multiple clusters identified via profiles. When no profile is specified, minikube falls back on the default cluster.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.1 Moving from Docker to Kubernetes
+
+219
+
+WARNING Running the examples on a local Kubernetes cluster requires Docker to have at least 2 CPUs and 4 GB of memory. If you are using Docker Desktop for Mac or for Windows, and you need to increase the resources assigned to the Docker Engine, refer to the product documentation for instructions on how to do that for your specific operating system (https://docs .docker.com/desktop).
+Let's create a new Kubernetes cluster named polar on top of Docker. This time, we also want to declare the resource limits for CPU and memory:
+
+$ minikube start --cpus 2 --memory 4g --driver docker --profile polar
+
+You can get a list of all the nodes in the cluster with the following command:
+
+$ kubectl get nodes
+
+NAME STATUS ROLES
+
+AGE VERSION
+
+polar Ready control-plane,master 21s v1.24.3
+
+The cluster we have just created is composed of a single node, which hosts the Control Plane and acts as a worker node for deploying containerized workloads.
+You can use the same Kubernetes client (kubectl) to interact with different local or remote clusters. The following command will list all the available contexts with which you can interact:
+
+$ kubectl config get-contexts
+
+CURRENT NAME
+
+*
+
+polar
+
+CLUSTER polar
+
+AUTHINFO polar
+
+If you have more than one context, make sure kubectl is configured to use polar. You can verify which is the current context by running this command:
+$ kubectl config current-context polar
+
+If the result is different from polar, you can change the current context as follows:
+$ kubectl config use-context polar Switched to context "polar".
+
+For the rest of the chapter, I will assume you have this local cluster up and running. At any time, you can stop the cluster with minikube stop --profile polar and start it again with minikube start --profile polar. If you ever want to delete it and start over, you can run the minikube delete --profile polar command.
+In the next section, you'll complete the setup for your local Kubernetes cluster by deploying a PostgreSQL database.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+220
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+7.1.2
+
+Managing data services in a local cluster
+As you learned in chapter 5, data services are the stateful components of a system and require special care in a cloud environment due to the challenges of handling their storage. Managing persistence and storage in Kubernetes is a complex topic, and it's not usually the responsibility of developers.
+When you deploy the Polar Bookshop system in production, you'll rely on the managed data services offered by the cloud provider, so I have prepared the configuration for deploying PostgreSQL in your local Kubernetes cluster. Check the source code repository accompanying this book (Chapter07/07-end) and copy the content of the polar-deployment/kubernetes/platform/development folder into the same path in your polar-deployment repository. The folder contains basic Kubernetes manifests to run a PostgreSQL database.
+Open a Terminal window, navigate to the kubernetes/platform/development folder located in your polar-deployment repository, and run the following command to deploy PostgreSQL in your local cluster:
+
+$ kubectl apply -f services
+
+NOTE The preceding command creates the resources defined in the manifests within the services folder. In the next section, you'll learn more about the kubectl apply command and Kubernetes manifests.
+The result will be a Pod running a PostgreSQL container in your local Kubernetes cluster. You can check it out with the following command:
+
+$ kubectl get pod
+
+NAME
+
+READY STATUS RESTARTS AGE
+
+polar-postgres-677b76bfc5-lkkqn 1/1
+
+Running 0
+
+48s
+
+TIP You can check the database logs by running kubectl logs deployment/polar-postgres.
+
+Running Kubernetes services with Helm
+A popular way of running third-party services in a Kubernetes cluster is through Helm (https://helm.sh). Think of it as a package manager. To install software on your computer, you can use one of the operating system package managers, like Apt (Ubuntu), Homebrew (macOS), or Chocolatey (Windows); in Kubernetes, you can similarly use Helm, but we call them charts instead of packages.
+At this stage in our cloud native journey, using Helm would be a bit premature and perhaps confusing. To fully understand how it works, it's essential to acquire more familiarity with Kubernetes first.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.2 Kubernetes Deployments for Spring Boot
+
+221
+
+For the rest of the chapter, I'll assume you have a PostgreSQL instance running in your local cluster. If at any point you need to undeploy the database, you can run the kubectl delete -f services command from the same folder.
+The following section will present the main Kubernetes concepts and guide you through deploying Spring Boot applications on your local cluster.
+
+7.2 Kubernetes Deployments for Spring Boot
+This section will walk you through the main Kubernetes objects you'll be working with as a developer and the vocabulary necessary to communicate efficiently with a platform team and deploy your applications to a cluster.
+You have already gone through the containerization of a Spring Boot application. A Spring Boot application on Kubernetes is still packaged as a container, but it runs in a Pod controlled by a Deployment object.
+Pods and Deployments are core concepts you need to understand when working with Kubernetes. Let's start by looking at some of their main characteristics, after which you'll practice declaring and creating Kubernetes resources to deploy the Catalog Service application.
+
+7.2.1
+
+From containers to Pods
+As we discussed in the previous section, Pods are the smallest deployable units in Kubernetes. When moving from Docker to Kubernetes, we switch from managing containers to managing Pods.
+A Pod is the smallest Kubernetes object, and it "represents a set of running containers" in a cluster. It's usually set up to run a single primary container (your application), but it can also run optional helper containers with additional features like logging, monitoring, or security (https://kubernetes.io/docs/reference/glossary).
+A Pod is usually comprised of one container: the application instance. When that happens, it's not much different from working with containers directly. However, there are some scenarios where your application container needs to be deployed together with some helper containers that perhaps perform initialization tasks required by the application or add extra functionality such as logging. For example, Linkerd (a service mesh) adds its own container (a sidecar) to Pods to perform operations such as intercepting HTTP traffic and encrypting it to guarantee secure communication between all Pods via mTLS (mutual Transport Layer Security). Figure 7.3 illustrates single-container and multi-container Pods.
+In this book, you'll work with single-container Pods, where the container is the application. Compared to containers, Pods allow you to manage related containers as a single entity. But that's not enough. Directly creating and managing Pods would not be much different than working with plain Docker containers. We need something at a higher level of abstraction to define how we want to deploy and scale our applications. That's where the Deployment objects come into play.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+222
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+Single-container Pod
+
+Multi-container Pod
+
+Container
+
+Container
+
+Application container
+
+Container
+Helper container
+
+Figure 7.3 Pods are the smallest deployable units in Kubernetes. They run at least one primary container (the application) and might run optional helper containers for additional features like logging, monitoring, or security.
+
+7.2.2
+
+Controlling Pods with Deployments
+How can you scale an application to have five replicas running? How can you ensure there are always five replicas up and running even when failures occur? How can you deploy a new version of the application without downtime? With Deployments.
+A Deployment is an object that manages the life cycle of a stateless, replicated application. Each replica is represented by a Pod. The replicas are distributed among the nodes of a cluster for better resilience (https://kubernetes.io/docs/reference/glossary).
+In Docker you manage your application instances directly by creating and removing containers. In Kubernetes you don't manage Pods. You let a Deployment do that for you. Deployment objects have several important and valuable characteristics. You can use them to deploy your applications, roll out upgrades without downtime, roll back to a previous version in case of errors, and pause and resume upgrades.
+Deployments also let you manage replication. They make use of an object named ReplicaSet to ensure there's always the desired number of Pods up and running in your cluster. If one of them crashes, a new one is created automatically to replace it. Furthermore, replicas are deployed across different nodes in your cluster to ensure even higher availability if one node crashes. Figure 7.4 shows the relationship between containers, Pods, ReplicaSets, and Deployments.
+
+Container
+
+Container
+
+Container
+
+Container
+
+Container
+
+Pod
+
+Pod
+
+Pod
+
+Pod
+
+Pod
+
+ReplicaSet Ensures there's always the desired number of Pods running in your cluste.r
+
+Deployment Manages the life cyle of a replicated application by running ReplicaSets and Pods
+
+Figure 7.4 A Deployment manages replicated applications with ReplicaSets and Pods in your cluster. A ReplicaSet ensures the desired number of Pods is always up and running. A Pod runs a containerized application.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.2 Kubernetes Deployments for Spring Boot
+
+223
+
+Deployments provide a convenient abstraction for us to declare what we want to achieve (the desired state), and we can let Kubernetes make it happen. You don't need to worry about how to achieve a specific result. Unlike imperative tools such as Ansible or Puppet, you can just tell Kubernetes what you want, and the orchestrator will figure out how to achieve the desired result and keep it consistent. That's what we call declarative configuration.
+Kubernetes uses controllers that watch the system and compare the desired state with the actual state. When there is any difference between the two, it acts to make them match again. Deployments and ReplicaSets are controller objects, handling rollout, replication, and self-healing. For example, suppose you declare that you want three replicas of your Spring Boot application deployed. If one crashes, the associated ReplicaSet notices it and creates a new Pod to align the actual state with the desired one.
+After packaging a Spring Boot application as an OCI image, all you need to do to run it in a Kubernetes cluster is define a Deployment object. You'll learn how in the next section.
+
+7.2.3
+
+Creating a Deployment for a Spring Boot application
+There are a few options for creating and managing Kubernetes objects in a cluster. In chapter 2 we used the kubectl client directly, but that approach lacks version control and reproducibility. It's the same reason why we prefer Docker Compose over the Docker CLI.
+In Kubernetes, the recommended approach is to describe an object's desired state in a manifest file, typically specified in YAML format. We use declarative configuration: we declare what we want instead of how to achieve it. In chapter 2 we imperatively used kubectl to create and delete objects, but when we work with manifests, we apply them to the cluster. Then Kubernetes will automatically reconcile the actual state in the cluster with the desired state in the manifest.
+A Kubernetes manifest usually comprises four main sections, as shown in figure 7.5:
+ apiVersion defines the versioned schema of the specific object representation. Core resources such as Pods or Services follow a versioned schema composed of only a version number (such as v1). Other resources like Deployments or ReplicaSet follow a versioned schema consisting of a group and a version number (for example, apps/v1). If in doubt about which version to use, you can refer to the Kubernetes documentation (https://kubernetes.io/docs) or use the kubectl explain <object_name> command to get more information about the object, including the API version to use.
+ kind is the type of Kubernetes object you want to create, such as Pod, ReplicaSet, Deployment, or Service. You can use the kubectl api-resources command to list all the objects supported by the cluster.
+ metadata provides details about the object you want to create, including the name and a set of labels (key/value pairs) used for categorization. For example,
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+224
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+Version of Kubernetes API used to create this object
+Data used to uniquely identify the object
+
+Kubernetes manifest apiVersion: kind: metadata:
+
+What kind of object you want to create
+
+spec:
+
+The state you desire for the object
+
+Figure 7.5 A Kubernetes manifest is typically composed of four main sections: apiVersion, kind, metadata, and spec.
+you can instruct Kubernetes to replicate all the objects with a specific label attached.  spec is a section specific to each object type and is used to declare the desired configuration.
+Now that you're familiar with the main sections of a Kubernetes manifest, let's define one for a Deployment object that will run a Spring Boot application.
+DEFINING A DEPLOYMENT MANIFEST WITH YAML There are different strategies for organizing Kubernetes manifests. For the Catalog Service application, create a "k8s" folder in the project root (catalog-service). We will use it to store the manifests for the application.
+NOTE If you haven't followed along with the examples implemented in the previous chapters, you can refer to the repository accompanying the book (https://github.com/ThomasVitale/cloud-native-spring-in-action) and use the project in Chapter07/07-begin/catalog-service as a starting point.
+Let's start by creating a deployment.yml file inside the catalog-service/k8s folder. As you saw in figure 7.5, the first sections you need to include are apiVersion, kind, and metadata.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.2 Kubernetes Deployments for Spring Boot
+
+225
+
+Listing 7.1 Initializing a Deployment manifest for Catalog Service
+
+The API version for Deployment objects
+apiVersion: apps/v1
+
+The type of object to create
+
+kind: Deployment metadata:
+name: catalog-service
+
+The name of the Deployment
+
+labels: app: catalog-service
+
+A set of labels attached to the Deployment
+
+This Deployment is labeled with "app=catalog-service."
+
+NOTE The Kubernetes API can change over time. Make sure you always use the API supported by the version of Kubernetes you're running. If you have followed along so far, you shouldn't have this problem. But if it happens, kubectl will return a very descriptive error message telling you exactly what's wrong and how to fix it. You can also use the kubectl explain <object_ name> command to check the API version supported by your Kubernetes installation for a given object.
+The spec section of a Deployment manifest contains a selector part to define a strategy for identifying which objects should be scaled by a ReplicaSet (more on this later) and a template part describing the specifications for creating the desired Pod and containers.
+
+Listing 7.2 The desired state for the Catalog Service deployment
+
+apiVersion: apps/v1
+
+kind: Deployment metadata:
+name: catalog-service labels:
+
+Defines the labels used to select the Pods to be scaled
+
+app: catalog-service spec:
+selector:
+
+The template for creating a Pod
+
+matchLabels:
+
+app: catalog-service
+
+template:
+
+Labels attached to the Pod
+
+The list of containers
+
+metadata: labels:
+
+object. They should match the ones used as selectors.
+
+in the Pod
+
+app: catalog-service
+
+(one in this case)
+
+spec: containers:
+
+The image used to run the container. No tag is defined,
+
+The name of the Pod
+
+- name: catalog-service image: catalog-service
+
+so "latest" will be used implicitly.
+
+imagePullPolicy: IfNotPresent
+
+Instructs Kubernetes to pull
+
+The ports exposed by
+
+ports: - containerPort: 9001
+
+the image from a container registry only if it's not present
+
+the container
+
+locally yet
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+226
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+env: - name: BPL_JVM_THREAD_COUNT value: "50"
+
+The list of environment variables passed to the Pod
+
+- name: SPRING_DATASOURCE_URL
+
+value: jdbc:postgresql://polar-postgres/polardb_catalog
+
+- name: SPRING_PROFILES_ACTIVE
+
+value: testdata
+A Paketo Buildpacks environment variable to configure the number of threads for memory calculation
+
+Enables the "testdata" Spring profile
+
+A value for the spring.datasource.url property pointing to the PostgreSQL Pod
+deployed previously
+
+The containers part should look familiar, since it resembles how you defined containers in the services section of a Docker Compose file. Like you did with Docker, you can use an environment variable to define the URL for the PostgreSQL instance the application should use. The hostname part of the URL (polar-postgres) is the name of the Service object that was used to expose the database and was created previously from the kubernetes/platform/development folder. You'll learn more about Services later in the chapter. For now, it's enough to know that polar-postgres is the name through which other objects in the cluster can communicate with the PostgreSQL instance.
+In a production scenario, the image would be fetched from a container registry. During development, it's more convenient to work with local images. Let's build one for Catalog Service, as you learned in the previous chapter.
+Open a Terminal window, navigate to the Catalog Service root folder (catalogservice), and build a new container image as follows:
+
+$ ./gradlew bootBuildImage
+
+TIP If you're working on ARM64 machines (such as Apple Silicon computers), you can add the --builder ghcr.io/thomasvitale/java-builder-arm64 argument to the previous command to use an experimental version of Paketo Buildpacks with ARM64 support. Be aware that it's experimental and not ready for production. For more information, you can refer to the documentation on GitHub: https://github.com/ThomasVitale/paketo-arm64. Without this workaround, until official support is added (https://github.com/paketo -buildpacks/stacks/issues/51), you can still use Buildpacks to build containers and run them via Docker Desktop on Apple Silicon computers, but the build process and application startup phase will be slower than usual.
+By default, minikube doesn't have access to your local container images, so it will not find the image you have just built for Catalog Service. But don't worry: you can manually import it into your local cluster:
+
+$ minikube image load catalog-service --profile polar
+
+NOTE YAML is an expressive language, but it can make your coding experience quite bad due to its constraints about spaces or perhaps the lack of
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.2 Kubernetes Deployments for Spring Boot
+
+227
+
+support from your editor. When a kubectl command involving a YAML file fails, verify that spaces and indentation are used correctly. For Kubernetes, you can install a plugin in your editor to support you while writing YAML manifests, ensuring that you always use the correct syntax, spaces, and indentation. You can find a few plugin options in the README.md file in the repository accompanying this book: https://github.com/ThomasVitale/cloud-native -spring-in-action.
+Now that you have a Deployment manifest, let's move on and see how to apply it to your local Kubernetes cluster.
+CREATING A DEPLOYMENT OBJECT FROM A MANIFEST You can apply Kubernetes manifests to a cluster using the kubectl client. Open a Terminal window, navigate to your Catalog Service root folder (catalog-service), and run the following command:
+
+$ kubectl apply -f k8s/deployment.yml
+
+The command is processed by the Kubernetes Control Plane, which will create and maintain all the related objects in the cluster. You can verify which objects have been created with the following command:
+
+$ kubectl get all -l app=catalog-service
+
+NAME
+
+READY STATUS RESTARTS AGE
+
+pod/catalog-service-68bc5659b8-k6dpb 1/1
+
+Running 0
+
+42s
+
+NAME
+
+READY UP-TO-DATE AVAILABLE AGE
+
+deployment.apps/catalog-service 1/1
+
+1
+
+1
+
+42s
+
+NAME
+
+DESIRED CURRENT READY AGE
+
+replicaset.apps/catalog-service-68bc5659b8 1
+
+1
+
+1
+
+42s
+
+Since you used labels consistently in your Deployment manifest, you can use the label app=catalog-service to fetch all the Kubernetes objects related to the Catalog Service deployment. As you can see, the declaration in deployment.yml resulted in the creation of a Deployment, a ReplicaSet, and a Pod.
+To verify that Catalog Service started up correctly, you can check the logs from its Deployment as follows:
+
+$ kubectl logs deployment/catalog-service
+
+NOTE You can monitor whether Pods have been created successfully by inspecting the STATUS column when you run kubectl get pods. Should a Pod fail to be deployed, check that column. Common error statuses are ErrImagePull or ImagePullBackOff. They happen when Kubernetes can't pull the image used by the Pod from the configured container registry. We're currently working with local images, so make sure you built and loaded a Catalog
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+228
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+Service container image into minikube. You can use the kubectl describe pod <pod_name> command to get more information about the error and kubectl logs <pod_name> to get the application logs from a specific Pod instance.
+
+When deploying containers in a cloud environment like a Kubernetes cluster, you'll want to be sure it has enough resources to operate. In chapter 15, you'll learn how to assign CPU and memory resources to a container running in Kubernetes and how to configure memory for the JVM by applying the Java memory calculator provided by Cloud Native Buildpacks. For now, we'll rely on the default resource configuration.
+So far, you have created a Deployment for a Spring Boot application and run it in your local Kubernetes cluster. But it's not possible to use it yet, since it's isolated inside the cluster. In the next section you'll learn how to expose your application to the outside world and how to use the service-discovery and load-balancing functionality provided by Kubernetes.
+
+7.3 Service discovery and load balancing
+We've talked about Pods and Deployments, so let's dig into Services a bit. You've got the Catalog Service application running as a Pod in your local Kubernetes cluster, but there are still unanswered questions. How can it interact with the PostgreSQL Pod running in the cluster? How does it know where to find it? How can you expose a Spring Boot application to be used by other Pods in the cluster? How can you expose it outside the cluster?
+This section will answer those questions by introducing two important aspects of cloud native systems: service discovery and load balancing. I'll present the two main patterns available to implement them when working with Spring applications: client-side and server-side. Then you'll apply the latter approach, which is conveniently offered natively by Kubernetes through Service objects, meaning you don't have to change anything in your code to support it (unlike the client-side option). Finally, you'll learn how the communication between the Catalog Service Pod and the PostgreSQL Pod happens, and you'll expose the Catalog Service application as a network service.
+
+7.3.1
+
+Understanding service discovery and load balancing
+When one service needs to communicate with another, it must be provided with information about where to find it, such as an IP address or a DNS name. Let's consider two applications: Alpha App and Beta App. Figure 7.6 shows how the communication between the two would happen if there were only one Beta App instance.
+In the scenario illustrated in figure 7.6, we say that Alpha App is upstream and Beta App is downstream. Furthermore, Beta App is a backing service with respect to Alpha App. There's only one instance of Beta App running, so the DNS name gets resolved to its IP address.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.3 Service discovery and load balancing
+
+229
+
+Interprocess communication: no service discovery or load balancing
+
+Alpha app
+
+Calls Beta app by its hostname, resolved by DNS
+
+Beta app
+
+10.0.0.1
+Figure 7.6 If there were only one Beta App instance, the interprocess communication between Alpha App and Beta App would be based on a DNS name resolving to the IP address of Beta App.
+
+In the cloud, you'll probably want to have multiple instances of a service running, and each service instance will have its own IP address. Unlike physical machines or longrunning virtual machines, a service instance will not live long in the cloud. Application instances are disposable--they can be removed or replaced for different reasons, such as when they are not responsive anymore. You can even enable the auto-scaling feature to automatically scale your application in and out, depending on the workload. Using IP addresses for interprocess communication in the cloud is not an option.
+To overcome that issue, you might consider using DNS records, relying on a round-robin name resolution pointing to one of the IP addresses assigned to the replicas. Knowing the hostname, you can reach the backing service even if one of the IP addresses changes because the DNS server would be updated with the new ones. However, this approach is not the best fit for cloud environments because the topology changes too often. Some DNS implementations cache the results of name lookups even after they should have expired. Similarly, some applications cache DNS lookup responses for too long. Either way, there's a high chance of using a hostname/IP address resolution that is no longer valid.
+Service discovery in cloud environments requires a different solution. First, we need to keep track of all the service instances running and store that information in a service registry. Whenever a new instance is created, an entry should be added to the registry. When it's shut down, it should be removed accordingly. The registry recognizes that multiple instances of the same application can be up and running. When an application needs to call a backing service, it performs a lookup in the registry to determine which IP address to contact. If multiple instances are available, a load-balancing strategy is applied to distribute the workload across them.
+We distinguish between client-side and server-side service discovery, depending on where the problem is solved. Let's take a look at both options.
+
+7.3.2
+
+Client-side service discovery and load balancing
+Client-side service discovery requires applications to register themselves with a service registry upon startup and unregister when shutting down. Whenever they need to call a backing service, they ask the service registry for an IP address. If multiple instances
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+230
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+are available, the registry will return the list of IP addresses. The application will choose one of them, depending on a load-balancing strategy defined by the application itself. Figure 7.7 shows how that works.
+
+Client-side service discovery and load balancing: model
+
+Service registry
+
+1. Registers itself with
+
+2. Where can I find Beta app?
+
+3. You can find it at any of these IP addresses: - 10.0.0.1 - 10.0.0.2
+
+Alpha app
+
+4. Calls one of the Beta app replicas depending on the load balancing strategy configured in Alpha app
+
+Beta app 10.0.0.1
+
+Beta app
+10.0.0.2 Figure 7.7 The interprocess communication between Alpha App and Beta App is based on the IP address of the specific instance to call, chosen from a list of IP addresses returned upon lookup in the service registry.
+
+The Spring Cloud project offers a few options for adding client-side service discovery to your Spring applications. One of the popular choices is Spring Cloud Netflix Eureka, which wraps the Eureka service registry developed by Netflix. Alternatives are Spring Cloud Consul, Spring Cloud Zookeeper Discovery, and Spring Cloud Alibaba Nacos.
+Besides managing a service registry explicitly, you'll also need to add the correct integration to all your applications. For each of the previously mentioned options, Spring Cloud provides a client library you can add to your Spring application so it can use the service registry with minimal effort. Finally, Spring Cloud Load Balancer can be used for client-side load balancing, which is the preferred choice over Spring Cloud Netflix Ribbon (no longer maintained).
+All those libraries offered by Spring Cloud contributed to making it an excellent choice for building cloud native applications and implementing microservices architectures. A benefit of such a solution is that your applications have complete control over the load-balancing strategy. Suppose you need to implement patterns like hedging:
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.3 Service discovery and load balancing
+
+231
+
+sending the same request to multiple instances to increase the chance one responds correctly within a specific time limit. Client service discovery can help you with that.
+A drawback is that client service discovery assigns more responsibility to developers. If your system includes applications built using different languages and frameworks, you'll need to handle the client part of each of them in different ways. Also, it results in one more service to deploy and maintain (the service registry), unless you use PaaS solutions like Azure Spring Apps or VMware Tanzu Application Service, which provide it for you. Server-side discovery solutions solve these issues at the expense of fine-grained control in the application. Let's see how.
+
+7.3.3
+
+Server-side service discovery and load balancing
+Server-side service discovery solutions move a lot of responsibility to the deployment platform, so that developers can focus on the business logic and rely on the platform to provide all the necessary functionality for service discovery and load balancing. Such solutions automatically register and deregister application instances and rely on a load-balancer component to route any incoming requests to one of the available instances according to a specific strategy. In this case, the application doesn't need to interact with the service registry, which is updated and managed by the platform. Figure 7.8 shows how that works.
+
+Server-side service discovery and load balancing: model
+
+Alpha app
+
+1. Calls Beta app by hostname. No need to know the list of replicas or their IP addresses.
+
+2. Forwards request to one of the replicas based on the configured load-balancing strategy
+Load balancer
+
+Beta app 10.0.0.1
+Beta app
+
+10.0.0.2
+Figure 7.8 The interprocess communication between Alpha App and Beta App is based on a DNS name that gets resolved to one of the instance IP addresses by a load-balancer component. The service registration process is handled by the platform transparently.
+
+The Kubernetes implementation of this service discovery pattern is based on Service objects. A Service is "an abstract way to expose an application running on a set of Pods as a network service" (https://kubernetes.io/docs/reference/glossary).
+A Service object is an abstraction targeting a set of Pods (typically using labels) and defining the access policy. When an application needs to contact a Pod exposed by a
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+232
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+Service object, it can use the Service name instead of calling the Pod directly. That's what you did to let the Catalog Service application interact with the PostgreSQL instance (polar-postgres was the name of the Service exposing the PostgreSQL Pod). The Service name is then resolved to the IP address of the Service itself by a local DNS server running in the Kubernetes Control Plane.
+NOTE The IP address assigned to a Service is fixed for its lifetime. Therefore, the DNS resolution of a Service name doesn't change as often as it would with application instances.
+After resolving the Service name to its IP address, Kubernetes relies on a proxy (called kube-proxy), which intercepts the connection to the Service object and forwards the request to one of the Pods targeted by the Service. The proxy knows all the replicas available and adopts a load-balancing strategy depending on the type of Service and the proxy configuration. There is no DNS resolution involved in this step, solving the problems I mentioned earlier. The service discovery implementation adopted by Kubernetes is shown in figure 7.9.
+
+Server-side service discovery and load balancing: Kubernetes
+
+Alpha app Pod
+
+2. Forwards request to one of the
+
+replicas through a proxy, based on
+
+the configured load-balancing
+
+strategy. No DNS involved.
+
+1. Calls beta-app, which
+
+gets resolved to the
+
+Service IP address by
+
+a local DNS server
+
+Service
+
+beta-app
+
+10.0.0.99
+
+Beta app Pod
+10.0.0.1
+Beta app Pod
+10.0.0.2
+
+Figure 7.9 In Kubernetes, the interprocess communication between Alpha App and Beta App happens through a Service object. Any request arriving at the Service is intercepted by a proxy that forwards it to one of the replicas targeted by the Service based on a specific load-balancing strategy.
+
+This solution is transparent to your Spring Boot applications. Unlike options like Spring Cloud Netflix Eureka, you get service discovery and load balancing out of the box in Kubernetes, without requiring any change to your code. That's why it's the preferred option when you use a Kubernetes-based platform to deploy your applications.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.3 Service discovery and load balancing
+
+233
+
+Service discovery and Spring Cloud Kubernetes
+If you need to migrate existing applications that use one of the client-side service discovery options I mentioned in the previous section, you can use Spring Cloud Kubernetes to make the transition smoother. You can keep your existing service discovery and load-balancing logic in your application. However, instead of solutions like Spring Cloud Netflix Eureka, you can use the Spring Cloud Kubernetes Discovery Server for service registry. This can be a convenient way to migrate applications to Kubernetes without changing too much in your application code. For more information, refer to the project documentation: https://spring.io/projects/spring-cloud-kubernetes.
+Unless what you're doing requires specific handling of service instances and load balancing in your applications, my recommendation is to migrate over time to using the native service discovery functionality offered by Kubernetes, aiming at removing infrastructural concerns from your applications.
+
+With this general understanding of how service discovery and load balancing are implemented in Kubernetes, let's look at how we can define a Service to expose a Spring Boot application.
+
+7.3.4
+
+Exposing Spring Boot applications with Kubernetes Services
+As you learned in the previous section, Kubernetes Services let you expose a set of Pods via an interface that other applications can call without knowing the details about the individual Pod instances. This model provides applications with transparent service-discovery and load-balancing functionality.
+First of all, there are different types of Services, depending on which access policy you want to enforce for the application. The default and most common type is called ClusterIP, and it exposes a set of Pods to the cluster. This is what makes it possible for Pods to communicate with each other (for example, Catalog Service and PostgreSQL).
+Four pieces of information characterize a ClusterIP Service:
+ The selector label used to match all the Pods that should be targeted and exposed by the Service
+ The network protocol used by the Service  The port on which the Service is listening (we're going to use port 80 for all
+our application Services)  The targetPort, which is the port exposed by the targeted Pods to which the
+Service will forward requests
+Figure 7.10 shows the relationship between a ClusterIP Service and a set of target Pods running applications exposed on port 8080. The name of the Service must be a valid DNS name, since it will be used by other Pods as a hostname to access the targeted Pods.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+234
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+targetPort
+
+Container
+
+8080
+
+Reachable at service-name:80
+(Service DNS name)
+
+80
+
+Service service-name
+10.0.0.99
+
+port
+
+Exposed by Exposed by
+targetPort
+
+8080
+
+Pod
+Container Pod
+
+Figure 7.10 A ClusterIP service exposes a set of Pods to the network inside the cluster.
+
+DEFINING A SERVICE MANIFEST WITH YAML Let's see how we can define a manifest for a Service object to expose the Catalog Service application through the DNS name catalog-service and port 80. Open the catalog-service/k8s folder you created earlier and add a new service.yml file.
+
+Listing 7.3 Service manifest for the Catalog Service application
+
+The port exposed by the Service
+
+The API version for Service objects
+
+The type of object to create
+
+apiVersion: v1 kind: Service metadata:
+name: catalog-service
+
+The name of the Service; it must be a valid DNS name.
+
+labels: app: catalog-service
+spec:
+
+A label attached to the Service
+
+type: ClusterIP
+
+The type of Service
+
+selector:
+
+app: catalog-service ports: - protocol: TCP
+port: 80
+
+The label used to match the Pods to target and expose
+
+targetPort: 9001
+The port exposed by the Pods targeted by the Service
+
+The network protocol used by the Service
+
+CREATING A SERVICE OBJECT FROM A MANIFEST You can apply a Service manifest as you did for Deployments. Open a Terminal window, navigate to your Catalog Service root folder (catalog-service), and run the following command:
+
+$ kubectl apply -f k8s/service.yml
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.3 Service discovery and load balancing
+
+235
+
+The command will be processed by the Kubernetes Control Plane, which will create and maintain the Service object in the cluster. You can verify the result with the following command:
+
+$ kubectl get svc -l app=catalog-service
+
+NAME
+
+TYPE
+
+CLUSTER-IP
+
+EXTERNAL-IP PORT(S) AGE
+
+catalog-service ClusterIP 10.102.29.119 <none>
+
+80/TCP 42s
+
+Since it's of type ClusterIP, the Service makes it possible for other Pods within the cluster to communicate with the Catalog Service application, either using its IP address (called the cluster IP) or through its name. That will be useful for the applications you'll build in the next chapters, but what about us? How can we expose the application outside the cluster to test it?
+For now, we'll rely on the port-forwarding feature offered by Kubernetes to expose an object (in this case, a Service) to a local machine. You did that already in chapter 2, so the command should look familiar:
+
+$ kubectl port-forward service/catalog-service 9001:80 Forwarding from 127.0.0.1:9001 -> 9001 Forwarding from [::1]:9001 -> 9001
+
+You can finally call the application from localhost on port 9001, and all requests will be forwarded to the Service object and ultimately to the Catalog Service Pod. Try visiting http://localhost:9001 from your browser to see the welcome message, or http:// localhost:9001/books to browse the books available in the catalog.
+
+TIP The process started by the kubectl port-forward command will keep running until you explicitly stop it with Ctrl-C. Until then, you'll need to open another Terminal window if you want to run CLI commands.
+
+Figure 7.11 illustrates how the communication works between your computer, Catalog Service, and PostgreSQL.
+
+5342
+Service polar-postgres
+5342
+9001
+Service catalog-service
+80
+
+Port-forward to localhost:9001
+
+Exposed by
+
+Catalog Service container
+Pod
+
+Calls
+
+Exposed by
+
+Kubernetes cluster
+
+PostgreSQL container
+Pod
+
+Figure 7.11 The Catalog Service application is exposed to your local machine through port forwarding. Both Catalog Service and PostgreSQL are exposed to the inside of the cluster through the cluster-local hostname, IP address, and port assigned to the Service objects.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+236
+
+CHAPTER 7 Kubernetes fundamentals for Spring Boot
+
+So far we've been working with only one instance of Catalog Service, but we can take advantage of Kubernetes and scale it out. The following section will cover how to scale Spring Boot applications and address aspects such as fast startup and graceful shutdown, which are essential for cloud native applications.
+
+NOTE Imagine running all those commands every time you change something in your application, and you want to test it locally. It doesn't look very appealing, does it? Don't worry! In section 7.5 I'll show you how to set up a local Kubernetes development workflow to automate all those operations.
+
+7.4 Scalability and disposability
+Deploying multiple instances of the same application helps in achieving high availability. When the workload is high, it can be distributed across different replicas. When an instance enters a faulty state and can't process requests anymore, it can be deleted and a new one created. This continuous and dynamic scaling of application instances requires stateless and disposable applications, as per the 15-Factor methodology.
+This section will show you what it means for an application to be disposable, how to enable graceful shutdown, and how to scale an application in Kubernetes.
+
+7.4.1
+
+Ensuring disposability: Fast startup
+Traditional applications deployed on application servers take quite some time to start. It's not rare for them to take several minutes before they're ready to accept connections. On the other hand, cloud native applications should be optimized for starting quickly, taking a few seconds rather than minutes to become ready. Spring Boot is already optimized for fast startup, and each new version is shipped with more improvements.
+Fast startup is relevant in a cloud environment because applications are disposable and are frequently created, destroyed, and scaled. The quicker the startup, the sooner a new application instance is ready to accept connections.
+Standard applications, like microservices, are good with a startup time in the range of a few seconds. On the other hand, serverless applications usually require a faster startup phase in the range of milliseconds rather than seconds. Spring Boot covers both needs, but the second use case might require a bit of additional configuration.
+In chapter 16, you'll learn about serverless applications with Spring Cloud Function, and I'll show you how to package them as native images using Spring Native and GraalVM. The result will be an application with almost instant startup time, reduced resource consumption, and reduced image size.
+
+7.4.2
+
+Ensuring disposability: Graceful shutdown
+Having applications start quickly is not enough to address our scalability needs. Whenever an application instance is shut down, it must happen gracefully without clients experiencing downtime or errors. Gracefully shutting down means the application stops accepting new requests, completes all those still in progress, and closes any open resources, like database connections.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+7.4 Scalability and disposability
+
+237
+
+All the embedded servers available in Spring Boot support a graceful shutdown mode, but in slightly different ways. Tomcat, Jetty, and Netty stop accepting new requests entirely when the shutdown signal is received. On the other hand, Undertow keeps accepting new requests but immediately replies with an HTTP 503 response.
+By default, Spring Boot stops the server immediately after receiving a termination signal (SIGTERM). You can switch to a graceful mode by configuring the server.shutdown property. You can also configure the grace period, which is how long the application can spend processing all the pending requests. After the grace period expires, the application is terminated even if there are still pending requests. By default, the grace period is 30 seconds. You can change it through the spring.lifecycle.timeout-per-shutdown-phase property.
+Let's configure graceful shutdown for Catalog Service. We could do that via environment variables or set it as a default configuration. We'll go with the second option. Open the application.yml file located in the catalog-service/src/main/resources folder, and update the configuration as follows:
+
+server: port: 9001 shutdown: graceful tomcat: connection-timeout: 2s keep-alive-timeout: 15s threads: max: 50 min-spare: 5
+
+Enable graceful shutdown
+
+spring: application: name: catalog-service lifecycle: timeout-per-shutdown-phase: 15s
+...
+
+Defines a 15 s grace period
+
+Since we've modified the application source code, we need to build a new container image and load it into minikube. That's not very efficient, is it? Later in the chapter, I'll show you a better way. For now, follow the procedure I described earlier to package Catalog Service as a container image (./gradlew bootBuildImage) and load it into the Kubernetes cluster we are using for Polar Bookshop (minikube image load catalog -service --profile polar).
+After enabling application support for graceful shutdown, you need to update the Deployment manifest accordingly. When a Pod has to be terminated (for example, during a downscaling process or as part of an upgrade), Kubernetes sends a SIGTERM signal to it. Spring Boot will intercept that signal and start shutting down gracefully. By default, Kubernetes waits for a grace period of 30 seconds. If the Pod is not terminated after that period, Kubernetes sends a SIGKILL signal to force the Pod's termination. Since the Spring Boot grace period is lower than the Kubernetes one, the application is in control of when it will terminate.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+

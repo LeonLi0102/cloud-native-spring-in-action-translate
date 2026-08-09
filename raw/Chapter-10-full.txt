@@ -1,0 +1,2490 @@
+API gateway and circuit breakers
+This chapter covers
+ Implementing edge services with Spring Cloud Gateway and Reactive Spring
+ Configuring circuit breakers with Spring Cloud Circuit Breaker and Resilience4J
+ Defining rate limiters with Spring Cloud Gateway and Redis
+ Managing distributed sessions with Spring Session Data Redis
+ Routing application traffic with Kubernetes Ingress
+In the previous chapter, you learned several aspects of building resilient, scalable, and cost-effective applications using the reactive paradigm. In this chapter, the Spring reactive stack will be the foundation for implementing an API gateway for the Polar Bookshop system. An API gateway is a common pattern in distributed architectures, like microservices, used to decouple the internal APIs from the clients. When establishing such an entry point to your system, you can also use it to handle cross-cutting concerns, such as security, monitoring, and resilience.
+294
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.1 Edge servers and Spring Cloud Gateway
+
+295
+
+This chapter will teach you how to use Spring Cloud Gateway to build an Edge Service application and implement an API gateway and some of those cross-cutting concerns. You'll improve the resilience of the system by configuring circuit breakers with Spring Cloud Circuit Breaker, defining rate limiters with Spring Data Redis Reactive, and using retries and timeouts just like you learned in the previous chapter.
+Next, I'll discuss how to design stateless applications. Some states will need to be saved for the applications to be useful--you have already used relational databases. This chapter will teach you how to store web session state using Spring Session Data Redis, a NoSQL in-memory data store.
+Finally, you'll see how to manage external access to the applications running in a Kubernetes cluster by relying on the Kubernetes Ingress API.
+Figure 9.1 shows what the Polar Bookshop system will look like after completing this chapter.
+NOTE The source code for the examples in this chapter is available in the Chapter09/09-begin and Chapter09/09-end folders, containing the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+9.1 Edge servers and Spring Cloud Gateway
+Spring Cloud Gateway is a project built on top of Spring WebFlux and Project Reactor to provide an API gateway and a central place to handle cross-cutting concerns like security, resilience, and monitoring. It's built for developers, and it's a good fit in Spring architectures and heterogeneous environments.
+An API gateway provides an entry point to your system. In distributed systems like microservices, that's a convenient way to decouple the clients from any changes to the internal services' APIs. You're free to change how your system is decomposed into services and their APIs, relying on the fact that the gateway can translate from a more stable, client-friendly, public API to the internal one.
+Suppose you're in the process of moving from a monolith to microservices. In that case, an API gateway can be used as a monolith strangler and can wrap your legacy applications until they are migrated to the new architecture, keeping the process transparent to clients. In case of different client types (single-page applications, mobile applications, desktop applications, IoT devices), an API gateway gives you the option to provide a better-crafted API to each of them depending on their needs (also called the backend-for-frontend pattern). Sometimes a gateway can also implement the API composition pattern, letting you query and join data from different services before returning the result to a client (for example, using the new Spring for GraphQL project).
+Calls are forwarded to downstream services from the gateway according to specified routing rules, similar to a reverse proxy. This way the client doesn't need to keep track of the different services involved in a transaction, simplifying the client's logic and reducing the number of calls it has to make.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+296
+
+CHAPTER 9 API gateway and circuit breakers
+
+User [Person]
+A user of the Polar Bookshop application
+Uses [REST/HTTP]
+
+Session Store [Container: Redis]
+Stores web session data and cache
+
+Reads from and writes to
+[RESP]
+
+Edge Service [Container: Spring Boot]
+Provides API gateway and cross-cutting concerns
+
+Forwards requests to [REST/HTTP]
+
+Forwards requests to [REST/HTTP]
+
+Catalog Service [Container: Spring Boot]
+Provides functionality for managing the books in the catalog
+Reads from and writes to
+[JDBC]
+
+Checks book details [REST/HTTP]
+
+Order Service [Container: Spring Boot]
+Provides functionality for purchasing books
+
+Reads from and writes to [R2DBC]
+
+Polar Bookshop [Software System]
+
+Catalog Database [Container: PostgreSQL]
+Stores book data
+
+Order Database [Container: PostgreSQL]
+Stores order data
+
+Figure 9.1 The architecture of the Polar Bookshop system after adding Edge Service and Redis
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.1 Edge servers and Spring Cloud Gateway
+
+297
+
+Since the API gateway is the entry point to your system, it can also be an excellent place to handle cross-cutting concerns like security, monitoring, and resilience. Edge servers are applications at the edge of a system that implement aspects like API gateways and cross-cutting concerns. You can configure circuit breakers to prevent cascading failures when invoking the services downstream. You can define retries and timeouts for all the calls to internal services. You can control the ingress traffic and enforce quota policies to limit the use of your system depending on some criteria (such as the membership level of your users: basic, premium, pro). You can also implement authentication and authorization at the edge and pass tokens to downstream services (as you'll see in chapters 11 and 12).
+However, it's important to remember that an edge server adds complexity to the system. It's another component to build, deploy, and manage in production. It also adds a new network hop to the system, so the response time will increase. That's usually an insignificant cost, but you should keep it in mind. Since the edge server is the entry point to the system, it's at risk of becoming a single point of failure. As a basic mitigation strategy, you should deploy at least two replicas of an edge server following the same approach we discussed for configuration servers in chapter 4.
+Spring Cloud Gateway greatly simplifies building edge services, focusing on simplicity and productivity. Furthermore, since it's based on a reactive stack, it can scale efficiently to handle the high workload naturally happening at the edge of a system.
+The following section will teach you how to set up an edge server with Spring Cloud Gateway. You'll learn about routes, predicates, and filters, which are the building blocks of the gateway. And you'll apply the retry and timeout patterns you learned in the previous chapter to the interactions between the gateway and the downstream services.
+
+NOTE If you haven't followed along with the examples implemented in the previous chapters, you can refer to the repository accompanying the book and use the project in Chapter09/09-begin as a starting point (https://github .com/ThomasVitale/cloud-native-spring-in-action).
+
+9.1.1
+
+Bootstrapping an edge server with Spring Cloud Gateway
+The Polar Bookshop system needs an edge server to route traffic to the internal APIs and address several cross-cutting concerns. You can initialize our new Edge Service project from Spring Initializr (https://start.spring.io), store the result in a new edgeservice Git repository, and push it to GitHub. The parameters for the initialization are shown in figure 9.2.
+
+TIP In the begin folder for this chapter, you'll find a curl command you can run in a Terminal window. It downloads a zip file containing all the code you need to get started, without going through the manual generation on the Spring Initializr website.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+298
+
+CHAPTER 9 API gateway and circuit breakers
+
+Figure 9.2 The parameters for initializing the Edge Service project
+The dependencies section of the autogenerated build.gradle file looks like this:
+dependencies { implementation 'org.springframework.cloud:spring-cloud-starter-gateway' testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+These are the main dependencies:  Spring Cloud Gateway (org.springframework.cloud:spring-cloud-startergateway)--Provides utilities to route requests to APIs and cross-cutting concerns like resilience, security, and monitoring. It's built on top of the Spring reactive stack.  Spring Boot Test (org.springframework.boot:spring-boot-starter-test)-- Provides several libraries and utilities for testing applications, including Spring Test, JUnit, AssertJ, and Mockito. It's automatically included in every Spring Boot project.
+At its core, Spring Cloud Gateway is a Spring Boot application. It provides all the convenient features we've been using in the previous chapters, such as auto-configuration, embedded servers, test utilities, externalized configuration, and so on. It's also built on the Spring reactive stack, so you can use the tools and patterns you learned in the previous chapter regarding Spring WebFlux and Reactor. Let's start by configuring the embedded Netty server.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.1 Edge servers and Spring Cloud Gateway
+
+299
+
+First, rename the application.properties file generated by Spring Initializr (edgeservice/src/main/resources) to application.yml. Then open the file and configure the Netty server as you learned in the previous chapter.
+
+Listing 9.1 Configuring Netty server and graceful shutdown
+
+The port where the server will accept connections
+server:
+
+How long to wait for a TCP connection to be established with the server
+
+port: 9000 netty:
+connection-timeout: 2s idle-timeout: 15s
+
+How long to wait before closing a TCP connection if no data is transferred
+
+shutdown: graceful spring:
+
+Enables graceful shutdown
+
+application:
+
+name: edge-service lifecycle:
+timeout-per-shutdown-phase: 15s
+
+Defines a 15 s grace period
+
+The application is set up, so you can move on and start exploring the features of Spring Cloud Gateway.
+
+9.1.2
+
+Defining routes and predicates
+Spring Cloud Gateway provides three main building blocks:
+ Route--This is identified by a unique ID, a collection of predicates for deciding whether to follow the route, a URI for forwarding the request if the predicates allow, and a collection of filters that are applied either before or after forwarding the request downstream.
+ Predicate--This matches anything from the HTTP request, including path, host, headers, query parameters, cookies, and body.
+ Filter--This modifies an HTTP request or response before or after forwarding the request to the downstream service.
+Suppose a client sends a request to Spring Cloud Gateway. If the request matches a route through its predicates, the Gateway HandlerMapping will send the request to the Gateway WebHandler, which in turn will run the request through a chain of filters.
+There are two filter chains. One chain contains the filters to be run before the request is sent to the downstream service. The other chain is run after sending the request downstream and before forwarding the response. You'll learn about the different types of filters in the next section. Figure 9.3 shows how the routing works in Spring Cloud Gateway.
+In the Polar Bookshop system, we have built two applications with APIs that are meant to be accessible from the outside world (public APIs): Catalog Service and Order Service. We can use Edge Service to hide them behind an API gateway. For starters, we need to define the routes.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+300
+
+CHAPTER 9 API gateway and circuit breakers
+
+HTTP request
+Client
+
+HandlerMapping Predicates
+
+WebHandler Pre-filters
+
+Post-filters Spring Cloud Gateway
+
+Downstream service
+HTTP response
+
+Figure 9.3 Requests are matched against predicates, filtered, and finally forwarded to the downstream service, which replies with a response that goes through another set of filters before being returned to the client.
+
+A minimal route must be configured with a unique ID, a URI where the request should be forwarded, and at least one predicate. Open the application.yml file for the Edge Service project, and configure two routes to Catalog Service and Order Service.
+
+Listing 9.2 Configuring routes to downstream services
+
+spring:
+
+cloud: gateway: routes:
+
+A list of route definitions
+
+- id: catalog-route
+
+The route ID
+
+uri: ${CATALOG_SERVICE_URL:http://localhost:9001}/books
+
+predicates: - Path=/books/**
+- id: order-route
+
+The predicate is a path to match
+
+uri:
+${ORDER_SERVICE_URL:http://localhost:9002}/orders
+predicates:
+
+The URI value comes from an environment variable, or else from the default.
+
+- Path=/orders/**
+
+Both the routes for Catalog Service and Order Service are matched based on a Path predicate. All the incoming requests with a path starting with /books will be forwarded to Catalog Service. If the path starts with /orders, then Order Service will receive the request. The URIs are computed using the value from an environment variable (CATALOG_SERVICE_URL and ORDER_SERVICE_URL). If they are not defined, the default value written after the first colon (:) symbol will be used. It's an alternative approach compared to how we defined URLs in the previous chapter, based on custom properties; I wanted to show you both options.
+The project comes with many different predicates built-in, which you can use in your route configuration to match against any aspect of an HTTP request, including Cookie, Header, Host, Method, Path, Query, and RemoteAddr. You can also combine
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.1 Edge servers and Spring Cloud Gateway
+
+301
+
+them to form AND conditionals. In the previous example, we used the Path predicate. Refer to the official documentation for an extensive list of predicates available in Spring Cloud Gateway: https://spring.io/projects/spring-cloud-gateway.
+
+Defining routes with the Java/Kotlin DSL
+Spring Cloud Gateway is a very flexible project that lets you configure routes the way that best suits your needs. Here you have configured routes in a property file (application.yml or application.properties), but there's also a DSL available for configuring routes programmatically in Java or Kotlin. Future versions of the project will also implement a feature to fetch the route configuration from a data source using Spring Data.
+How you use it is up to you. Putting routes in configuration properties gives you the chance to customize them easily depending on the environment and to update them at runtime without the need to rebuild and redeploy the application. For example, you would get those benefits when using Spring Cloud Config Server. On the other hand, the DSL for Java and Kotlin lets you define more complex routes. Configuration properties allow you to combine different predicates with an AND logical operator only. The DSL also enables you to use other logical operators like OR and NOT.
+
+Let's verify that it works as intended. We'll use Docker to run the downstream services and PostgreSQL, whereas we'll run Edge Service locally on the JVM to make it more efficient to work with, since we are actively implementing the application.
+First, we need both Catalog Service and Order Service up and running. From each project's root folder, run ./gradlew bootBuildImage to package them as container images. Then start them via Docker Compose. Open a Terminal window, navigate to the folder where your docker-compose.yml file is located (polar-deployment/docker), and run the following command:
+$ docker-compose up -d catalog-service order-service
+Since both applications depend on PostgreSQL, Docker Compose will also run the PostgreSQL container.
+When the downstream services are all up and running, it's time to start Edge Service. From a Terminal window, navigate to the project's root folder (edge-service), and run the following command:
+$ ./gradlew bootRun
+The Edge Service application will start accepting requests on port 9000. For the final test, try executing operations on books and orders, but this time through the API gateway (that is, using port 9000 rather than the individual ports to which Catalog Service and Order Service are listening). They should return a 200 OK response:
+$ http :9000/books $ http :9000/orders
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+302
+
+CHAPTER 9 API gateway and circuit breakers
+
+The result is the same as if you called Catalog Service and Order Service directly, but you only need to know one hostname and port this time. When you are done testing the application, stop its execution with Ctrl-C. Then terminate all the containers with Docker Compose:
+
+$ docker-compose down
+
+Under the hood, Edge Service uses Netty's HTTP client to forward requests to downstream services. As extensively discussed in the previous chapter, whenever an application calls an external service, it's essential to configure a timeout to make it resilient to interprocess communication failures. Spring Cloud Gateway provides dedicated properties to configure the HTTP client timeouts.
+Open the Edge Service application.yml file once again, and define values for the connection timeout (the time limit for a connection to be established with the downstream service) and for the response timeout (the time limit for receiving a response).
+
+Listing 9.3 Configuring timeouts for the gateway HTTP client
+
+spring: cloud: gateway: httpclient:
+
+Configuration properties for the HTTP client
+
+connect-timeout: 2000
+
+response-timeout: 5s
+
+Time limit for a connection to be established (in ms)
+Time limit for a response to be received (Duration)
+
+By default, the Netty HTTP client used by Spring Cloud Gateway is configured with an elastic connection pool to increase the number of concurrent connections dynamically as the workload increases. Depending on the number of requests your system receives simultaneously, you might want to switch to a fixed connection pool so you have more control over the number of connections. You can configure the Netty connection pool in Spring Cloud Gateway through the spring.cloud.gateway.httpclient.pool property group in the application.yml file.
+
+Listing 9.4 Configuring the connection pool for the gateway HTTP client
+
+spring: cloud: gateway: httpclient: connect-timeout: 5000 response-timeout: 5s pool: type: elastic max-idle-time: 15s max-life-time: 60s
+
+Type of connection pool (elastic, fixed, or disabled)
+Idle time after which the communication channel will be closed
+Time after which the communication channel will be closed
+
+You can refer to the official Reactor Netty documentation for more details about how the connection pool works, what configurations are available, and tips on what values to use based on specific scenarios (https://projectreactor.io/docs).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.1 Edge servers and Spring Cloud Gateway
+
+303
+
+In the next section, we'll start implementing something more interesting than merely forwarding requests--we'll look at the power of Spring Cloud Gateway filters.
+
+9.1.3
+
+Processing requests and responses through filters
+Routes and predicates alone make the application act as a proxy, but it's filters that make Spring Cloud Gateway really powerful.
+Filters can run before forwarding incoming requests to a downstream application (pre-filters). They can be used for:
+ Manipulating the request headers  Applying rate limiting and circuit breaking  Defining retries and timeouts for the proxied request  Triggering an authentication flow with OAuth2 and OpenID Connect
+Other filters can apply to outgoing responses after they are received from the downstream application and before sending them back to the client (post-filters). They can be used for:
+ Setting security headers  Manipulating the response body to remove sensitive information
+Spring Cloud Gateway comes bundled with many filters that you can use to perform different actions, including adding headers to a request, configuring a circuit breaker, saving the web session, retrying the request on failure, or activating a rate limiter.
+In the previous chapter, you learned how to use the retry pattern to improve application resilience. You'll now learn how to apply it as a default filter for all GET requests going through the routes defined in the gateway.
+USING THE RETRY FILTER You can define default filters in the application.yml file located under src/main/ resources. One of the filters provided by Spring Cloud Gateway is the Retry filter. The configuration is similar to what we did in chapter 8.
+Let's define a maximum of three retry attempts for all GET requests whenever the error is in the 5xx range (SERVER_ERROR). We don't want to retry requests when the error is in the 4xx range. For example, if the result is a 404 response, it doesn't make sense to retry the request. We can also list the exceptions for which a retry should be attempted, such as IOException and TimeoutException.
+By now, you know that you shouldn't keep retrying requests one after the other. You should use a backoff strategy instead. By default, the delay is computed using the formula firstBackoff * (factor ^ n). If you set the basedOnPreviousValue parameter to true, the formula will be prevBackoff * factor.
+
+Listing 9.5 Applying the retry filter to all routes
+
+spring: cloud: gateway:
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+304
+
+CHAPTER 9 API gateway and circuit breakers
+
+A list of default filters
+
+default-filters: - name: Retry args: retries: 3
+
+The name of the filter Maximum of 3 retry attempts
+
+Retries only GET requests
+
+methods: GET series: SERVER_ERROR
+
+Retries only when 5XX errors
+
+exceptions: java.io.IOException,
+ java.util.concurrent.TimeoutException
+backoff:
+firstBackoff: 50ms
+
+Retries only when the given exceptions are thrown
+
+maxBackOff: 500ms factor: 2 basedOnPreviousValue: false
+
+Retries with a delay computed as "firstBackoff * (factor ^ n)"
+
+The retry pattern is useful when a downstream service is momentarily unavailable. But what if it stays down for more than a few instants? At that point we could stop forwarding requests to it until we're sure that it's back. Continuing to send requests won't be beneficial for the caller or the callee. In that scenario, the circuit breaker pattern comes in handy. That's the topic of the next section.
+
+9.2 Fault tolerance with Spring Cloud Circuit Breaker and Resilience4J
+As you know, resilience is a critical property of cloud native applications. One of the principles for achieving resilience is blocking a failure from cascading and affecting other components. Consider a distributed system where application X depends on application Y. If application Y fails, will application X fail, too? A circuit breaker can block a failure in one component from propagating to the others depending on it, protecting the rest of the system. That is accomplished by temporarily stopping communication with the faulty component until it recovers. This pattern comes from electrical systems, for which the circuit is physically opened to break the electrical connection and avoid destroying the entire house when a part of the system fails due to current overload.
+In the world of distributed systems, you can establish circuit breakers at the integration points between components. Think about Edge Service and Catalog Service. In a typical scenario, the circuit is closed, meaning that the two services can interact over the network. For each server error response returned by Catalog Service, the circuit breaker in Edge Service would register the failure. When the number of failures exceeds a certain threshold, the circuit breaker trips, and the circuit transitions to open.
+While the circuit is open, communications between Edge Service and Catalog Service are not allowed. Any request that should be forwarded to Catalog Service will fail right away. In this state, either an error is returned to the client, or fallback logic is executed. After an appropriate amount of time to permit the system to recover, the circuit breaker transitions to a half-open state, allowing the next call to Catalog Service to go through. That is an exploratory phase to check if there are still issues in contacting the downstream service. If the call succeeds, the circuit breaker is reset and
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.2 Fault tolerance with Spring Cloud Circuit Breaker and Resilience4J
+
+305
+
+transitions to closed. Otherwise it goes back to being open. Figure 9.4 shows how a circuit breaker changes state.
+
+Circuit breaker state diagram
+
+CLOSED
+
+Trip breaker when failure rate is above threshold
+
+OPEN
+
+Reset breaker when failure rate is below threshold
+
+Trip breaker after failure rate is above threshold
+Attempt reset after wait duration
+HALF_OPEN
+
+Figure 9.4 A circuit breaker ensures fault tolerance when a downstream service exceeds the maximum number of failures allowed by blocking any communication between upstream and downstream services. The logic is based on three states: closed, open, and half-open.
+Unlike with retries, when the circuit breaker trips, no calls to the downstream service are allowed anymore. Like with retries, the circuit breaker's behavior depends on a threshold and a timeout, and it lets you define a fallback method to call. The goal of resilience is to keep the system available to users, even in the face of failures. In the worst-case scenario, like when a circuit breaker trips, you should guarantee a graceful degradation. You can adopt different strategies for the fallback method. For example, you might decide to return a default value or the last available value from a cache, in case of a GET request.
+The Spring Cloud Circuit Breaker project provides an abstraction for defining circuit breakers in a Spring application. You can choose between reactive and nonreactive implementations based on Resilience4J (https://resilience4j.readme.io). Netflix Hystrix was the popular choice for microservices architectures, but it entered maintenance mode back in 2018. After that, Resilience4J became the preferred choice because it provides the same features offered by Hystrix and more.
+Spring Cloud Gateway integrates natively with Spring Cloud Circuit Breaker, providing you with a CircuitBreaker gateway filter that you can use to protect the interactions with all downstream services. In the following sections, you'll configure a circuit breaker for the routes to Catalog Service and Order Service from Edge Service.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+306
+
+CHAPTER 9 API gateway and circuit breakers
+
+9.2.1
+
+Introducing circuit breakers with Spring Cloud Circuit Breaker
+To use Spring Cloud Circuit Breaker in Spring Cloud Gateway, you need to add a dependency to the specific implementation you'd like to use. In this case, we'll use the Resilience4J reactive version. Go ahead and add the new dependency in the build.gradle file for the Edge Service project (edge-service). Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 9.6 Adding dependency for Spring Cloud Circuit Breaker
+dependencies { ... implementation 'org.springframework.cloud:
+ spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+}
+
+The CircuitBreaker filter in Spring Cloud Gateway relies on Spring Cloud Circuit Breaker to wrap a route. As with the Retry filter, you can choose to apply it to specific routes or define it as a default filter. Let's go with the first option. You can also specify an optional fallback URI to handle the request when the circuit is in an open state. In this example (application.yml), both routes will be configured with a CircuitBreaker filter, but only catalog-route will have a fallbackUri value so that I can show you both scenarios.
+
+Listing 9.7 Configuring circuit breakers for the gateway routes
+
+spring:
+
+cloud:
+
+gateway:
+
+routes:
+
+- id: catalog-route
+
+uri: ${CATALOG_SERVICE_URL:http://localhost:9001}/books
+
+predicates:
+
+- Path=/books/** filters:
+
+Name of the circuit breaker
+
+Name of the filter
+
+- name: CircuitBreaker args: name: catalogCircuitBreaker fallbackUri: forward:/catalog-fallback
+
+Forwards request to this URI when the circuit is open
+
+- id: order-route
+
+uri: ${ORDER_SERVICE_URL:http://localhost:9002}/orders
+
+predicates: - Path=/orders/**
+filters: - name: CircuitBreaker
+
+No fallback defined for this circuit breaker.
+
+args:
+
+name: orderCircuitBreaker
+
+The next step is configuring the circuit breaker.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.2 Fault tolerance with Spring Cloud Circuit Breaker and Resilience4J
+
+307
+
+9.2.2
+
+Configuring a circuit breaker with Resilience4J
+After defining which routes you want to apply the CircuitBreaker filter to, you need to configure the circuit breakers themselves. As often in Spring Boot, you have two main choices. You can configure circuit breakers through the properties provided by Resilience4J or via a Customizer bean. Since we're using the reactive version of Resilience4J, the specific configuration bean would be of type Customizer<ReactiveResilience4JCircuitBreakerFactory>.
+Either way, you can choose to define a specific configuration for each circuit breaker you used in your application.yml file (catalogCircuitBreaker and orderCircuitBreaker in our case) or declare some defaults that will be applied to all of them.
+For the current example, we can define circuit breakers to consider a window of 20 calls (slidingWindowSize). Each new call will make the window move, dropping the oldest registered call. When at least 50% of the calls in the window have produced an error (failureRateThreshold), the circuit breaker will trip, and the circuit will enter the open state. After 15 seconds (waitDurationInOpenState), the circuit will be allowed to transition to a half-open state in which 5 calls are permitted (permittedNumberOfCallsInHalfOpenState). If at least 50% of them result in an error, the circuit will go back to the open state. Otherwise, the circuit breaker will trip to the closed state.
+On to the code. In the Edge Service project (edge-service), at the end of the application.yml file, define a default configuration for all Resilience4J circuit breakers.
+
+Listing 9.8 Configuring circuit breaker and time limiter
+
+resilience4j: circuitbreaker: configs: default:
+
+Default configuration bean for all circuit breakers
+
+The size of the sliding window used to record the outcome of calls when the circuit is closed
+
+Default
+
+slidingWindowSize: 20
+
+Number of permitted
+
+configuration bean for all time limiters
+
+permittedNumberOfCallsInHalfOpenState: 5 failureRateThreshold: 50
+
+calls when the circuit is half-open
+
+waitDurationInOpenState: 15000
+
+timelimiter:
+
+When the failure rate is above the threshold, the
+
+configs:
+
+circuit becomes open.
+
+default:
+
+timeoutDuration: 5s
+
+Waiting time before
+
+Configures a timeout (seconds)
+
+moving from open to half-open (ms)
+
+We configure both the circuit breaker and a time limiter, a required component when using the Resilience4J implementation of Spring Cloud Circuit Breaker. The timeout configured via Resilience4J will take precedence over the response timeout we defined in the previous section for the Netty HTTP client (spring.cloud.gateway .httpclient.response-timeout).
+When a circuit breaker switches to the open state, we'll want at least to degrade the service level gracefully and make the user experience as pleasant as possible. I'll show you how to do that in the next section.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+308
+
+CHAPTER 9 API gateway and circuit breakers
+
+9.2.3
+
+Defining fallback REST APIs with Spring WebFlux
+When we added the CircuitBreaker filter to catalog-route, we defined a value for the fallbackUri property to forward the requests to the /catalog-fallback endpoint when the circuit is in an open state. Since the Retry filter is also applied to that route, the fallback endpoint will be invoked even when all retry attempts fail for a given request. It's time to define that endpoint.
+As I mentioned in previous chapters, Spring supports defining REST endpoints either using @RestController classes or router functions. Let's use the functional way of declaring the fallback endpoints.
+In a new com.polarbookshop.edgeservice.web package in the Edge Service project, create a new WebEndpoints class. Functional endpoints in Spring WebFlux are defined as routes in a RouterFunction<ServerResponse> bean, using the fluent API provided by RouterFunctions. For each route, you need to define the endpoint URL, a method, and a handler.
+
+Listing 9.9 Fallback endpoints for when the Catalog Service is down
+
+package com.polarbookshop.edgeservice.web;
+
+import reactor.core.publisher.Mono; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration; import org.springframework.http.HttpStatus; import org.springframework.web.reactive.function.server.RouterFunction; import org.springframework.web.reactive.function.server.RouterFunctions; import org.springframework.web.reactive.function.server.ServerResponse;
+
+Fallback response
+used to handle the POST endpoint
+
+@Configuration public class WebEndpoints {
+@Bean
+
+Functional REST endpoints are defined in a bean.
+
+public RouterFunction<ServerResponse> routerFunction() {
+
+return RouterFunctions.route()
+
+.GET("/catalog-fallback", request ->
+
+Offers a fluent API to build routes
+Fallback response used to handle the GET endpoint
+
+ServerResponse.ok().body(Mono.just(""), String.class))
+
+.POST("/catalog-fallback", request ->
+
+ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE).build())
+
+.build(); } }
+
+Builds the functional endpoints
+
+For simplicity, the fallback for GET requests returns an empty string, whereas the fallback for POST requests returns an HTTP 503 error. In a real scenario, you might want to adopt different fallback strategies depending on the context, including throwing a custom exception to be handled from the client or returning the last value saved in the cache for the original request.
+So far, we have used retries, timeouts, circuit breakers, and failovers (fallbacks). In the next section, I'll expand on how we can work with all those resilience patterns together.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.2 Fault tolerance with Spring Cloud Circuit Breaker and Resilience4J
+
+309
+
+9.2.4
+
+Combining circuit breakers, retries, and time limiters
+When you combine multiple resilience patterns, the sequence in which they are applied is fundamental. Spring Cloud Gateway takes care of applying the TimeLimiter first (or the timeout on the HTTP client), then the CircuitBreaker filter, and finally Retry. Figure 9.5 shows how these patterns work together to increase the application's resilience.
+
+Combining resilience patterns
+
+Start
+
+Throw exception NO
+
+Client sends request
+
+NO
+
+Fallback defined?
+
+YES Execute fallback
+
+NO
+
+Time limit YES exceeded?
+
+Circuit closed?
+
+YES
+
+Retry request
+
+NO
+
+Retry successful?
+
+YES
+
+Return response
+
+Request successful?
+
+YES
+
+NO
+Figure 9.5 When multiple resilience patterns are implemented, they are applied in a specific sequence.
+You can verify the result of applying these patterns to Edge Service by using a tool like Apache Benchmark (https://httpd.apache.org/docs/2.4/programs/ab.html). If you're using macOS or Linux, you might have this tool already installed. Otherwise, you can follow the instructions on the official website and install it.
+Make sure both Catalog Service and Order Service are not running so that you can test circuit breakers in a failure scenario. Then enable debug logging for Resilience4J
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+310
+
+CHAPTER 9 API gateway and circuit breakers
+
+so you can follow the state transitions of the circuit breaker. At the end of the application.yml file in your Edge Service project, add the following configuration.
+Listing 9.10 Enabling debug logging for Resilience4J
+logging: level: io.github.resilience4j: DEBUG
+Next, build and run Edge Service (./gradlew bootRun). Since no downstream services are running (if they are, you should stop them), all the requests sent to them from Edge Service will result in errors. Let's see what happens if we run 21 sequential POST requests (-n 21 -c 1 -m POST) to the /orders endpoint. Remember that POST requests have no retry configuration, and order-route has no fallback, so the result will only be affected by the timeout and circuit breaker:
+$ ab -n 21 -c 1 -m POST http://localhost:9000/orders
+From the ab output, you can see that all the requests returned an error:
+Complete requests: 21 Non-2xx responses: 21
+The circuit breaker is configured to trip to the open state when at least 50% of the calls in a 20-sized time window fails. Since you have just started the application, the circuit will transition to the open state after 20 requests. In the application logs, you can analyze how the requests have been handled. All the requests failed, so the circuit breaker registers an ERROR event for each of them:
+Event ERROR published: CircuitBreaker 'orderCircuitBreaker' recorded an error.
+At the 20th request, a FAILURE_RATE_EXCEEDED event is recorded because it exceeded the failure threshold. That will result in a STATE_TRANSITION event that will open the circuit:
+Event ERROR published: CircuitBreaker 'orderCircuitBreaker' recorded an error.
+Event FAILURE_RATE_EXCEEDED published: CircuitBreaker 'orderCircuitBreaker' exceeded failure rate threshold.
+Event STATE_TRANSITION published: CircuitBreaker 'orderCircuitBreaker' changed state from CLOSED to OPEN
+The 21st request will not even try contacting Order Service: the circuit is open, so it cannot go through. A NOT_PERMITTED event is registered to signal why the request failed:
+Event NOT_PERMITTED published: CircuitBreaker 'orderCircuitBreaker' recorded a call which was not permitted.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.3 Request rate limiting with Spring Cloud Gateway and Redis
+
+311
+
+NOTE Monitoring the status of circuit breakers in production is a critical task. In chapter 13, I'll show you how to export that information as Prometheus metrics that you can visualize in a Grafana dashboard instead of checking the logs. In the meantime, for a more visual explanation, feel free to watch my "Spring Cloud Gateway: Resilience, Security, and Observability" session on circuit breakers at Spring I/O, 2022 (http://mng.bz/z55A).
+Now let's see what happens when we call a GET endpoint for which both retries and fallback have been configured. Before proceeding, rerun the application so you can start with a clear circuit breaker state (./gradlew bootRun). Then run the following command:
+$ ab -n 21 -c 1 -m GET http://localhost:9000/books
+If you check the application logs, you'll see how the circuit breaker behaves precisely like before: 20 allowed requests (closed circuit), followed by a non-permitted request (open circuit). However, the result of the previous command shows 21 requests completed with no errors:
+Complete requests: 21 Failed requests: 0
+This time, all requests have been forwarded to the fallback endpoint, so the client didn't experience any errors.
+We configured the Retry filter to be triggered when an IOException or TimeoutException occurs. In this case, since the downstream service is not running, the exception thrown is of type ConnectException, so the request is conveniently not retried, which allowed me to show you the combined behavior of circuit breakers and fallbacks without retries.
+So far we have looked at patterns that make the interactions between Edge Service and the downstream applications more resilient. What about the entry point of the system? The next section will introduce rate limiters, which will control the request flow coming into the system through the Edge Service application. Before proceeding, stop the application's execution with Ctrl-C.
+9.3 Request rate limiting with Spring Cloud Gateway and Redis
+Rate limiting is a pattern used to control the rate of traffic sent to or received from an application, helping to make your system more resilient and robust. In the context of HTTP interactions, you can apply this pattern to control outgoing or incoming network traffic using client-side and server-side rate limiters, respectively.
+Client-side rate limiters are for constraining the number of requests sent to a downstream service in a given period. It's a useful pattern to adopt when third-party organizations like cloud providers manage and offer the downstream service. You'll want to
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+312
+
+CHAPTER 9 API gateway and circuit breakers
+
+avoid incurring extra costs for having sent more requests than are allowed by your subscription. In the case of pay-per-use services, this helps prevent unexpected expenses.
+If the downstream service belongs to your system, you might use a rate limiter to avoid causing DoS problems for yourself. In this case, though, a bulkhead pattern (or concurrent request limiter) would be a better fit, setting constraints on how many concurrent requests are allowed and queuing up the blocked ones. Even better is an adaptive bulkhead, for which the concurrency limits are dynamically updated by an algorithm to better adapt to the elasticity of cloud infrastructure.
+Server-side rate limiters are for constraining the number of requests received by an upstream service (or client) in a given period. This pattern is handy when implemented in an API gateway to protect the whole system from overloading or from DoS attacks. When the number of users increases, the system should scale in a resilient way, ensuring an acceptable quality of service for all users. Sudden increases in user traffic are expected, and they are usually initially addressed by adding more resources to the infrastructure or more application instances. Over time, though, they can become a problem and even lead to service outages. Server-side rate limiters help with that.
+When a user has exceeded the number of allowed requests in a specific time window, all the extra requests are rejected with an HTTP 429 - Too Many Requests status. The limit is applied according to a given strategy. For example, you can limit requests per session, per IP address, per user, or per tenant. The overall goal is to keep the system available for all users in case of adversity. That is the definition of resilience. This pattern is also handy for offering services to users depending on their subscription tiers. For example, you might define different rate limits for basic, premium, and enterprise users.
+Resilience4J supports the client-side rate limiter and bulkhead patterns for both reactive and non-reactive applications. Spring Cloud Gateway supports the server-side rate limiter pattern, and this section will show you how to use it for Edge Service by using Spring Cloud Gateway and Spring Data Redis Reactive. Let's start with setting up a Redis container.
+
+9.3.1
+
+Running Redis as a container
+Imagine you want to limit access to your API so that each user can only perform 10 requests per second. Implementing such a requirement would require a storage mechanism to track the number of requests each user performs every second. When the limit is reached, the following requests should be rejected. When the second is over, each user can perform 10 more requests within the next second. The data used by the rate-limiting algorithm is small and temporary, so you might think of saving it in memory inside the application itself.
+However, that would make the application stateful and lead to errors, since each application instance would limit requests based on a partial data set. It would mean letting users perform 10 requests per second per instance rather than overall, because each instance would only keep track of its own incoming requests. The solution is to
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.3 Request rate limiting with Spring Cloud Gateway and Redis
+
+313
+
+use a dedicated data service to store the rate-limiting state and make it available to all the application replicas. Enter Redis.
+Redis (https://redis.com) is an in-memory store that is commonly used as a cache, message broker, or database. In Edge Service, we'll use it as the data service backing the request rate limiter implementation provided by Spring Cloud Gateway. The Spring Data Redis Reactive project provides the integration between a Spring Boot application and Redis.
+Let's first define a Redis container. Open the docker-compose.yml file you created in your polar-deployment repository. (If you haven't followed along with the examples, you can use Chapter09/09-begin/polar-deployment/docker/docker-compose.yml from the source code accompanying the book as a starting point.) Then add a new service definition using the Redis official image, and expose it through port 6379.
+
+Listing 9.11 Defining a Redis container
+
+version: "3.8"
+
+services:
+
+... polar-redis:
+
+Uses Redis 7.0
+
+image: "redis:7.0"
+
+container_name: "polar-redis"
+
+ports: - 6379:6379
+
+Exposes Redis through port 6379
+
+Next, open a Terminal window, navigate to the folder where your docker-compose.yml file is located, and run the following command to start a Redis container:
+
+$ docker-compose up -d polar-redis
+
+In the following section, you'll configure the Redis integration with Edge Service.
+
+9.3.2
+
+Integrating Spring with Redis
+The Spring Data project has modules supporting several database options. In the previous chapters, we worked with Spring Data JDBC and Spring Data R2DBC to use relational databases. Now we'll use Spring Data Redis, which provides support for this in-memory, non-relational data store. Both imperative and reactive applications are supported.
+First we need to add a new dependency on Spring Data Redis Reactive in the build.gradle file of the Edge Service project (edge-service). Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 9.12 Adding dependency for Spring Data Redis Reactive
+dependencies { ... implementation
+ 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+314
+
+CHAPTER 9 API gateway and circuit breakers
+
+Then, in the application.yml file, configure the Redis integration through the properties provided by Spring Boot. Besides spring.redis.host and spring.redis.port for defining where to reach Redis, you can also specify connection and read timeouts using spring.redis.connect-timeout and spring.redis.timeout respectively.
+
+Listing 9.13 Configuring the Redis integration
+
+spring: redis:
+
+Time limit for a connection to be established
+
+connect-timeout: 2s
+
+host: localhost
+
+port: 6379
+
+timeout: 1s
+
+Default Redis host
+Default Redis port
+Time limit for a response to be received
+
+In the next section, you'll see how to use Redis to back the RequestRateLimiter gateway filter that provides server-side rate limiting support.
+
+9.3.3
+
+Configuring a request rate limiter
+Depending on the requirements, you can configure the RequestRateLimiter filter for specific routes or as a default filter. In this case we'll configure it as a default filter so that it's applied to all routes, current and future.
+The implementation of RequestRateLimiter on Redis is based on the token bucket algorithm. Each user is assigned a bucket inside which tokens are dripped over time at a specific rate (the replenish rate). Each bucket has a maximum capacity (the burst capacity). When a user makes a request, a token is removed from its bucket. When there are no more tokens left, the request is not permitted, and the user will have to wait until more tokens are dripped into its bucket.
+
+NOTE If you want to know more about the token bucket algorithm, I recommend reading Paul Tarjan's "Scaling your API with Rate Limiters" article about how they use it to implement rate limiters at Stripe (https://stripe .com/blog/rate-limiters).
+
+For this example, let's configure the algorithm so that each request costs 1 token (redis-rate-limiter.requestedTokens). Tokens are dripped in the bucket following the configured replenish rate (redis-rate-limiter.replenishRate), which we'll set as 10 tokens per second. Sometimes there might be spikes, resulting in a larger number of requests than usual. You can allow temporary bursts by defining a larger capacity for the bucket (redis-rate-limiter.burstCapacity), such as 20. This means that when a spike occurs, up to 20 requests are allowed per second. Since the replenish rate is lower than the burst capacity, subsequent bursts are not allowed. If two spikes happen sequentially, only the first one will succeed, while the second will result in some requests being dropped with an HTTP 429 - Too Many Requests response. The resulting configuration in the application.yml file is shown in the following listing.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.3 Request rate limiting with Spring Cloud Gateway and Redis
+
+315
+
+Listing 9.14 Configuring a request rate limiter as a gateway filter
+
+spring: cloud: gateway: default-filters: name: RequestRateLimiter args: redis-rate-limiter: replenishRate: 10 burstCapacity: 20 requestedTokens: 1
+
+Number of tokens dripped in the bucket each second
+Allows request bursts of up to 20 requests
+How many tokens a request costs
+
+There's no general rule to follow in coming up with good numbers for the request rate limiter. You should start with your application requirements and go with a trial and error approach: analyze your production traffic, tune the configuration, and do this all over again until you achieve a setup that keeps your system available while not affecting the user experience badly. Even after that, you should keep monitoring the status of your rate limiters, since things can change in the future.
+Spring Cloud Gateway relies on Redis to keep track of the number of requests happening each second. By default, each user is assigned a bucket. However, we haven't introduced an authentication mechanism yet, so we'll use a single bucket for all requests until we address the security concerns in chapters 11 and 12.
+NOTE What happens if Redis becomes unavailable? Spring Cloud Gateway has been built with resilience in mind, so it will keep its service level, but the rate limiters would be disabled until Redis is up and running again.
+The RequestRateLimiter filter relies on a KeyResolver bean to determine which bucket to use for each request. By default, it uses the currently authenticated user in Spring Security. Until we add security to Edge Service, we'll define a custom KeyResolver bean and make it return a constant value (for example, anonymous) so that all requests will be mapped to the same bucket.
+In your Edge Service project, create a RateLimiterConfig class in a new com.polarbookshop.edgeservice.config package, and declare a KeyResolver bean, implementing a strategy to return a constant key.
+
+Listing 9.15 Defining a strategy to resolve the bucket to use per request
+package com.polarbookshop.edgeservice.config;
+
+import reactor.core.publisher.Mono; import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration;
+
+@Configuration public class RateLimiterConfig {
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+316
+
+CHAPTER 9 API gateway and circuit breakers
+
+@Bean public KeyResolver keyResolver() {
+return exchange -> Mono.just("anonymous"); } }
+
+Rate limiting is applied to requests using a constant key.
+
+Spring Cloud Gateway is configured to append headers with details about rate-limiting to each HTTP response, which we can use to verify its behavior. Rebuild and run Edge Service (./gradlew bootRun), and then try calling one of the endpoints.
+$ http :9000/books
+The response body depends on whether Catalog Service is running or not, but that doesn't matter in this example. The interesting aspect to notice is the HTTP headers of the response. They show the rate limiter's configuration and the number of remaining requests allowed within the time window (1 second):
+HTTP/1.1 200 OK Content-Type: application/json X-RateLimit-Burst-Capacity: 20 X-RateLimit-Remaining: 19 X-RateLimit-Replenish-Rate: 10 X-RateLimit-Requested-Tokens: 1
+
+You might not want to expose this information to clients in cases where the information could help bad actors craft attacks against your system. Or you might need different header names. Either way, you can use the spring.cloud.gateway.redis-ratelimiter property group to configure that behavior. When you're done testing the application, stop it with Ctrl-C.
+NOTE When the rate limiter pattern is combined with other patterns like time limiters, circuit breakers, and retries, the rate limiter is applied first. If a user's request exceeds the rate limit, it is rejected right away.
+Redis is an efficient data store ensuring fast data access, high availability, and resilience. In this section, we used it to provide storage for the rate limiters, and the next section will show you how to use it in another common scenario: session management.
+
+9.4 Distributed session management with Redis
+In the previous chapters, I often highlighted how cloud native applications should be stateless. We scale them in and out, and if they weren't stateless, we would lose the state every time an instance is shut down. Some state needs to be saved, or the applications would probably be useless. For example, Catalog Service and Order Service are stateless, but they rely on a stateful service (the PostgreSQL database) to permanently store the data about books and orders. Even if the applications are shut down, the data will survive and be available to all the application instances.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.4 Distributed session management with Redis
+
+317
+
+Edge Service is not dealing with any business entities it needs to store, but it still needs a stateful service (Redis) to store the state related to the RequestRateLimiter filter. When Edge Service is replicated, it's important to keep track of how many requests are left before exceeding the threshold. Using Redis, the rate limiter functionality is guaranteed consistently and safely.
+Furthermore, in chapter 11 you'll expand Edge Service to add authentication and authorization. Since it's the entry point to the Polar Bookshop system, it makes sense to authenticate the user there. Data about the authenticated session will have to be saved outside the application for the same reason as the rate limiter information is. If it wasn't, the user might have to authenticate themselves every time a request hits a different Edge Service instance.
+The general idea is to keep the applications stateless and use data services for storing the state. As you learned in chapter 5, data services need to guarantee high availability, replication, and durability. In your local environment, you can ignore that aspect, but in production you'll rely on the data services offered by cloud providers, both for PostgreSQL and Redis.
+The following section will cover how you can work with Spring Session Data Redis to establish distributed session management.
+
+9.4.1
+
+Handling sessions with Spring Session Data Redis
+Spring provides session management features with the Spring Session project. By default, session data is stored in memory, but that's not feasible in a cloud native application. You want to keep it in an external service so that the data survives the application shutdown. Another fundamental reason for using a distributed session store is that you usually have multiple instances of a given application. You'll want them to access the same session data to provide a seamless experience to the user.
+Redis is a popular option for session management, and it's supported by Spring Session Data Redis. Furthermore, you have already set it up for the rate limiters. You can add it to Edge Service with minimal configuration.
+First you need to add a new dependency on Spring Session Data Redis to the build.gradle file for the Edge Service project. You can also add the Testcontainers library so you can use a lightweight Redis container when writing integration tests. Remember to refresh and reimport the Gradle dependencies after the new addition.
+
+Listing 9.16 Adding dependency for Spring Session and Testcontainers
+ext { ... set('testcontainersVersion', "1.17.3")
+}
+dependencies { ... implementation 'org.springframework.session:spring-session-data-redis'
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+318
+
+CHAPTER 9 API gateway and circuit breakers
+
+testImplementation 'org.testcontainers:junit-jupiter' }
+
+dependencyManagement { imports { ... mavenBom
+ "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+} }
+
+Next, you need to instruct Spring Boot to use Redis for session management (spring.session.store-type) and define a unique namespace to prefix all session data coming from Edge Service (spring.session.redis.namespace). You can also define a timeout for the session (spring.session.timeout). If you don't specify a timeout, the default is 30 minutes.
+Configure Spring Session in the application.yml file as follows.
+
+Listing 9.17 Configuring Spring Session to store data in Redis
+spring: session: store-type: redis timeout: 10m redis: namespace: polar:edge
+
+Managing web sessions in a gateway requires some additional care to ensure you save the right state at the right time. In this example, we want the session to be saved in Redis before forwarding a request downstream. How can we do that? If you were thinking about whether there's a gateway filter for it, you would be right!
+In the application.yml file for the Edge Service project, add SaveSession as a default filter to instruct Spring Cloud Gateway to always save the web session before forwarding requests downstream.
+
+Listing 9.18 Configuring the gateway to save the session data
+
+spring: cloud: gateway: default-filters: - SaveSession
+
+Ensures the session data is saved before forwarding a request downstream
+
+That's a critical point when Spring Session is combined with Spring Security. Chapters 11 and 12 will cover more details about session management. For now, let's set up an integration test to verify the Spring context in Edge Service loads correctly, including the integration with Redis.
+The approach we'll use is similar to the one we used to define PostgreSQL test containers in the previous chapter. Let's extend the existing EdgeServiceApplicationTests
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.4 Distributed session management with Redis
+
+319
+
+class generated by Spring Initializr and configure a Redis test container. For this example, it's enough to verify that the Spring context loads correctly when Redis is used for storing web session­related data.
+
+Listing 9.19 Using a Redis container to test the Spring context loading
+
+package com.polarbookshop.edgeservice;
+
+import org.junit.jupiter.api.Test; import org.testcontainers.containers.GenericContainer; import org.testcontainers.junit.jupiter.Container; import org.testcontainers.junit.jupiter.Testcontainers; import org.testcontainers.utility.DockerImageName; import org.springframework.boot.test.context.SpringBootTest; import org.springframework.test.context.DynamicPropertyRegistry; import org.springframework.test.context.DynamicPropertySource;
+
+@SpringBootTest(
+
+webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
+
+)
+
+@Testcontainers class EdgeServiceApplicationTests {
+
+Activates automatic startup and cleanup of test containers
+
+Loads a full Spring web application context and a web environment listening on a random port
+
+private static final int REDIS_PORT = 6379;
+
+@Container static GenericContainer<?> redis =
+
+Defines a Redis container for testing
+
+new GenericContainer<>(DockerImageName.parse("redis:7.0"))
+
+.withExposedPorts(REDIS_PORT);
+
+@DynamicPropertySource
+
+static void redisProperties(DynamicPropertyRegistry registry) {
+
+registry.add("spring.redis.host", () -> redis.getHost());
+registry.add("spring.redis.port", () -> redis.getMappedPort(REDIS_PORT));
+
+Overwrites the Redis configuration to point to
+the test Redis instance
+
+}
+
+@Test void verifyThatSpringContextLoads() { }
+}
+Finally, run the integration tests as follows:
+
+An empty test used to verify that the application context is loaded correctly and that a connection with Redis has been established successfully
+
+$ ./gradlew test --tests EdgeServiceApplicationTests
+
+Should you want to disable the session management through Redis in some of your tests, you can do so by setting the spring.session.store-type property to none in a specific test class using the @TestPropertySource annotation, or in a property file if you want to make it apply to all test classes.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+320
+
+CHAPTER 9 API gateway and circuit breakers
+
+Polar Labs
+Feel free to apply what you learned in the previous chapters and prepare the Edge Service application for deployment.
+1 Add Spring Cloud Config Client to Edge Service to make it fetch configuration data from Config Service.
+2 Configure the Cloud Native Buildpacks integration, containerize the application, and define the commit stage of the deployment pipeline, as you learned in chapters 3 and 6.
+3 Write the Deployment and Service manifests for deploying Edge Service to a Kubernetes cluster.
+4 Configure Tilt to automate the Edge Service deployment to your local Kubernetes cluster initialized with minikube.
+You can refer to the Chapter09/09-end folder in the code repository accompanying the book to check the final result (https://github.com/ThomasVitale/cloud-nativespring-in-action). You can also deploy the backing services from the manifests available in the Chapter09/09-end/polar-deployment/kubernetes/platform/development folder with kubectl apply -f services.
+
+9.5 Managing external access with Kubernetes Ingress
+Spring Cloud Gateway helps you define an edge service where you can implement several patterns and cross-cutting concerns at the ingress point of a system. In the previous sections, you saw how to use it as an API gateway, implement resilience patterns like rate limiting and circuit breakers, and define distributed sessions. In chapters 11 and 12, we'll also add authentication and authorization features to Edge Service.
+Edge Service represents the entry point to the Polar Bookshop system. However, when it's deployed in a Kubernetes cluster, it's only accessible from within the cluster itself. In chapter 7, we used the port-forward feature to expose a Kubernetes Service defined in a minikube cluster to your local computer. That's a useful strategy during development, but it's not suitable for production.
+This section will cover how you can manage external access to applications running in a Kubernetes cluster using the Ingress API.
+NOTE This section assumes you have gone through the tasks listed in the previous "Polar Labs" sidebar and prepared Edge Service for deployment on Kubernetes.
+
+9.5.1
+
+Understanding Ingress API and Ingress Controller
+When it comes to exposing applications inside a Kubernetes cluster, we can use a Service object of type ClusterIP. That's what we've done so far to make it possible for Pods to interact with each other within the cluster. For example, that's how Catalog Service Pods can communicate with the PostgreSQL Pod.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.5 Managing external access with Kubernetes Ingress
+
+321
+
+A Service object can also be of type LoadBalancer, which relies on an external load balancer provisioned by a cloud provider to expose an application to the internet. We could define a LoadBalancer Service for Edge Service instead of the ClusterIP one. When running the system in a public cloud, the vendor would provision a load balancer, assign a public IP address, and all the traffic coming from that load balancer would be directed to the Edge Service Pods. It's a flexible approach that lets you expose a service directly to the internet, and it works with different types of traffic.
+The LoadBalancer Service approach involves assigning a different IP address to each service we decide to expose to the internet. Since services are directly exposed, we don't have the chance to apply any further network configuration, such as TLS termination. We could configure HTTPS in Edge Service, route all traffic directed to the cluster through the gateway (even platform services that don't belong to Polar Bookshop), and apply further network configuration there. The Spring ecosystem provides everything we need to address those concerns, and it's probably what we would do in many scenarios. However, since we want to run our system on Kubernetes, we can manage those infrastructural concerns at the platform level and keep our applications simpler and more maintainable. That's where the Ingress API comes in handy.
+An Ingress is an object that "manages external access to the services in a cluster, typically HTTP. Ingress may provide load balancing, SSL termination and name-based virtual hosting" (https://kubernetes.io/docs). An Ingress object acts as an entry point into a Kubernetes cluster and is capable of routing traffic from a single external IP address to multiple services running inside the cluster. We can use an Ingress object to perform load balancing, accept external traffic directed to a specific URL, and manage the TLS termination to expose the application services via HTTPS.
+Ingress objects don't accomplish anything by themselves. We use an Ingress object to declare the desired state in terms of routing and TLS termination. The actual component that enforces those rules and routes traffic from outside the cluster to the applications inside is the ingress controller. Since multiple implementations are available, there's no default ingress controller included in the core Kubernetes distribution-- it's up to you to install one. Ingress controllers are applications that are usually built using reverse proxies like NGINX, HAProxy, or Envoy. Some examples are Ambassador Emissary, Contour, and Ingress NGINX.
+In production, the cloud platform or dedicated tools would be used to configure an ingress controller. In our local environment, we'll need some additional configuration to make the routing work. For the Polar Bookshop example, we'll use Ingress NGINX (https://github.com/kubernetes/ingress-nginx) in both environments.
+NOTE There are two popular ingress controllers based on NGINX. The Ingress NGINX project (https://github.com/kubernetes/ingress-nginx) is developed, supported, and maintained in the Kubernetes project itself. It's open source,
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+322
+
+CHAPTER 9 API gateway and circuit breakers
+
+and it's what we'll use in this book. The NGINX Controller (www.nginx.com/ products/nginx-controller) is a product developed and maintained by the F5 NGINX company, and it comes with free and commercial options.
+Let's see how we can use Ingress NGINX on our local Kubernetes cluster. An ingress controller is a workload just like any other application running on Kubernetes, and it can be deployed in different ways. The simplest option would be using kubectl to apply its deployment manifests to the cluster. Since we use minikube to manage a local Kubernetes cluster, we can rely on a built-in add-on to enable the Ingress functionality based on Ingress NGINX.
+First, let's start the polar local cluster we introduced in chapter 7. Since we configured minikube to run on Docker, make sure your Docker Engine is up and running:
+$ minikube start --cpus 2 --memory 4g --driver docker --profile polar
+Next we can enable the ingress add-on, which will make sure that Ingress NGINX is deployed to our local cluster:
+$ minikube addons enable ingress --profile polar
+In the end, you can get information about the different components deployed with Ingress NGINX as follows:
+$ kubectl get all -n ingress-nginx
+The preceding command contains an argument we haven't encountered yet: -n ingress-nginx. It means that we want to fetch all objects created in the ingressnginx namespace.
+A namespace is "an abstraction used by Kubernetes to support isolation of groups of resources within a single cluster. Namespaces are used to organize objects in a cluster and provide a way to divide cluster resources" (https://kubernetes.io/docs/reference/glossary).
+We use namespaces to keep our clusters organized and define network policies to keep certain resources isolated for security reasons. So far, we've been working with the default namespace, and we'll keep doing that for all our Polar Bookshop applications. However, when it comes to platform services such as Ingress NGINX, we'll rely on dedicated namespaces to keep those resources isolated.
+Now that Ingress NGINX is installed, let's go ahead and deploy the backing services used by our Polar Bookshop applications. Check the source code repository accompanying this book (Chapter09/09-end) and copy the content of the polardeployment/kubernetes/platform/development folder into the same path in your polar-deployment repository, overwriting any existing file we used in previous chapters. The folder contains basic Kubernetes manifests to run PostgreSQL and Redis.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.5 Managing external access with Kubernetes Ingress
+
+323
+
+Open a Terminal window, navigate to the kubernetes/platform/development folder located in your polar-deployment repository, and run the following command to deploy PostgreSQL and Redis in your local cluster:
+
+$ kubectl apply -f services
+
+You can verify the results with the following command:
+
+$ kubectl get deployment
+
+NAME
+
+READY UP-TO-DATE AVAILABLE AGE
+
+polar-postgres 1/1
+
+1
+
+1
+
+73s
+
+polar-redis
+
+1/1
+
+1
+
+1
+
+73s
+
+TIP For your convenience, I prepared a script that performs all the previous operations with a single command. You can run it to create a local Kubernetes cluster with minikube, enable the Ingress NGINX add-on, and deploy the backing services used by Polar Bookshop. You'll find the create-cluster.sh and destroy-cluster.sh files in the kubernetes/platform/development folder that you have just copied over to your polar-deployment repository. On macOS and Linux, you might need to make the scripts executable via the chmod +x create-cluster.sh command.
+Let's conclude this section by packaging Edge Service as a container image and loading the artifact to the local Kubernetes cluster. Open a Terminal window, navigate to the Edge Service root folder (edge-service), and run the following commands:
+$ ./gradlew bootBuildImage $ minikube image load edge-service --profile polar
+
+In the next section, you'll define an Ingress object and configure it to manage external access to the Polar Bookshop system running in a Kubernetes cluster.
+
+9.5.2
+
+Working with Ingress objects
+Edge Service takes care of application routing, but it should not be concerned with the underlying infrastructure and network configuration. Using an Ingress resource, we can decouple the two responsibilities. Developers would maintain Edge Service, while the platform team would manage the ingress controller and the network configuration (perhaps relying on a service mesh like Linkerd or Istio). Figure 9.6 shows the deployment architecture of Polar Bookshop after introducing an Ingress.
+Let's define an Ingress to route all HTTP traffic coming from outside the cluster to Edge Service. It's common to define Ingress routes and configurations based on the DNS name used to send the HTTP request. Since we are working locally, and assuming we don't have a DNS name, we can call the external IP address provisioned for the Ingress to be accessible from outside the cluster. On Linux, you can use the IP address
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+324
+
+CHAPTER 9 API gateway and circuit breakers
+
+Service catalog-service
+80
+
+Routes
+
+Ingress
+
+to
+
+polar-ingress
+
+Accesses
+
+Internet
+
+9000
+Service edge-service
+80
+
+Exposed by
+
+Routes to
+
+Edge Service container
+Pod
+
+Routes to
+
+Kubernetes cluster
+
+Service order-service
+80
+
+Exposed by
+
+9001
+
+Catalog Service container
+Pod
+
+Exposed by
+
+9002
+
+Order Service container
+Pod
+
+Figure 9.6 The deployment architecture of the Polar Bookshop system after introducing an Ingress to manage external access to the cluster
+
+assigned to the minikube cluster. You can retrieve that value by running the following command:
+
+$ minikube ip --profile polar 192.168.49.2
+
+On macOS and Windows, the ingress add-on doesn't yet support using the minikube cluster's IP address when running on Docker. Instead, we need to use the minikube tunnel --profile polar command to expose the cluster to the local environment, and then use the 127.0.0.1 IP address to call the cluster. This is similar to the kubectl port-forward command, but it applies to the whole cluster instead of a specific service.
+After identifying the IP address to use, let's define the Ingress object for Polar Bookshop. In the Edge Service project, create a new ingress.yml file in the k8s folder.
+
+Listing 9.20 Exposing Edge Service outside the cluster via an Ingress
+
+The type of object to create
+
+apiVersion: networking.k8s.io/v1
+
+kind: Ingress metadata:
+name: polar-ingress
+
+The name of the Ingress
+
+spec:
+
+ingressClassName: nginx
+
+The API version for Ingress objects
+Configures the ingress controller responsible for managing this object
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+9.5 Managing external access with Kubernetes Ingress
+
+325
+
+rules: - http: paths:
+
+Ingress rules for HTTP traffic
+
+- path: /
+
+A default rule
+
+pathType: Prefix
+
+for all requests
+
+backend:
+
+The port number for
+
+service:
+
+the Service where traffic should be forwarded
+
+name: edge-service port:
+number: 80
+
+The name of the Service object where traffic should be forwarded
+
+At this point we are ready to deploy Edge Service and the Ingress to the local Kubernetes cluster. Open a Terminal window, navigate to the Edge Service root folder (edge-service), and run the following command:
+
+$ kubectl apply -f k8s
+
+Let's verify that the Ingress object has been created correctly with the following command:
+
+$ kubectl get ingress
+
+NAME polar-ingress
+
+CLASS HOSTS PORTS AGE
+
+nginx *
+
+80
+
+21s
+
+It's time to test that Edge Service is correctly available through the Ingress. If you're on Linux, you don't need any further preparation steps. If you're on macOS or Windows, open a new Terminal window and run the following command to expose your minikube cluster to your localhost. The command will continue running for the tunnel to be accessible, so make sure you keep the Terminal window open. The first time you run this command, you might be asked to input your machine's password to authorize the tunneling to the cluster:
+
+$ minikube tunnel --profile polar
+
+Finally, open a new Terminal window and run the following command to test the application (on Linux, use the minikube's IP address instead of 127.0.0.1):
+
+$ http 127.0.0.1/books
+
+Since Catalog Service is not running, Edge Service will execute the fallback behavior we configured earlier and return a 200 OK response with an empty body. That's what we expected, and it proves that the Ingress configuration works.
+When you are done trying out the deployment, you can stop and delete the local Kubernetes cluster with the following commands:
+$ minikube stop --profile polar $ minikube delete --profile polar
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+326
+
+CHAPTER 9 API gateway and circuit breakers
+
+TIP For your convenience, you can also use the destroy-cluster.sh script (available in the kubernetes/platform/development folder of your polardeployment repository) that you copied earlier from the book's source code. On macOS and Linux, you might need to make the script executable via the chmod +x destroy-cluster.sh command.
+Good job! We're now ready to make Edge Service even better by adding authentication and authorization. Before configuring security, though, we still need to complete the Polar Bookshop business logic for dispatching orders. In the next chapter, you'll do that while learning event-driven architectures, Spring Cloud Function, and Spring Cloud Stream with RabbitMQ.
+Summary
+ An API gateway provides several benefits in a distributed architecture, including decoupling the internal services from the external API and offering a central, convenient place for handling cross-cutting concerns like security, monitoring, and resilience.
+ Spring Cloud Gateway is based on the Spring reactive stack. It provides an API gateway implementation, and it integrates with the other Spring projects to add cross-cutting concerns to the application, including Spring Security, Spring Cloud Circuit Breaker, and Spring Session.
+ Routes are the core of Spring Cloud Gateway. They are identified by a unique ID, a collection of predicates determining whether to follow the route, a URI for forwarding the request if the predicates allow, and a collection of filters that are applied before or after forwarding the request downstream.
+ The Retry filter is for configuring retry attempts for specific routes.  The RequestRateLimiter filter, integrated with Spring Data Redis Reactive, lim-
+its the number of requests that can be accepted within a specific time window.  The CircuitBreaker filter, based on Spring Cloud Circuit Breaker and Resil-
+ience4J, defines circuit breakers, time limiters, and fallbacks to specific routes.  Cloud native applications should be stateless. Data services should be used for
+storing the state. For example, PostgreSQL is used for persistence storage and Redis for cache and session data.  A Kubernetes Ingress resource allows you to manage external access to applications running inside the Kubernetes cluster.  The routing rules are enforced by an ingress controller, which is an application that also runs in the cluster.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Event-driven applications and functions
+This chapter covers
+ Understanding event-driven architectures  Using RabbitMQ as a message broker  Implementing functions with Spring Cloud
+Function  Processing events with Spring Cloud Stream  Producing and consuming events with Spring
+Cloud Stream
+In the previous chapters, we worked on a system of distributed applications that interact according to the request/response pattern, a type of synchronous communication. You saw how to design the interaction both in an imperative and a reactive way. In the first case, processing threads would block, waiting for a response from an I/O operation. In the second case, threads would not wait. A response would be processed by any available thread asynchronously once it was received.
+Even if the reactive programming paradigm lets you subscribe to producers and process the incoming data asynchronously, the interaction between the two applications is synchronous. The first application (the client) sends a request to the second one (the server) and expects a response to arrive in a short time. How the
+327
+Licensed to Zhigang Li <lzg14@qq.com>
+
+328
+
+CHAPTER 10 Event-driven applications and functions
+
+client processes the response (imperative or reactive) is an implementation detail that doesn't affect the interaction itself. No matter what, a response is expected to arrive.
+Cloud native applications should be loosely coupled. The microservices expert Sam Newman identifies a few different types of coupling, including implementation, deployment, and temporal coupling.1 Let's consider the Polar Bookshop system we've been working on so far.
+We can change the implementation of any of the applications without having to change the others. For example, we can re-implement Catalog Service using the reactive paradigm without affecting Order Service. Using a service interface like a REST API, we hide the implementation details, improving loose coupling. All the applications can be deployed independently. They're not coupled, reducing risks and increasing agility.
+However, if you think about how the applications we built so far interact, you'll notice that they need other components of the system to be available. Order Service needs Catalog Service to ensure that a user can order a book successfully. We know that failures happen all the time, so we adopted several strategies to ensure resilience even in the face of adversity, or at least ensuring a graceful degradation of functionality. That's a consequence of temporal coupling: Order Service and Catalog Service need to be available at the same time to fulfill the system requirements.
+Event-driven architectures describe distributed systems that interact by producing and consuming events. The interaction is asynchronous, solving the problem of temporal coupling. This chapter will cover the basics of event-driven architectures and event brokers. You'll then learn how to implement business logic using the functional programming paradigm and Spring Cloud Function. Finally, you'll use Spring Cloud Stream to expose the functions as message channels via RabbitMQ, building eventdriven applications through the publisher/subscriber (pub/sub) model.
+
+NOTE The source code for the examples in this chapter is available in the Chapter10/10-begin, Chapter10/10-intermediate, and Chapter10/10-end folders, containing the initial, intermediate, and final state of the project (https://github.com/ThomasVitale/cloud-native-spring-in-action).
+
+10.1
+
+Event-driven architectures
+An event is an occurrence. It's something relevant that happened in a system, like a state change, and there can be many sources of events. This chapter will focus on applications, but events can very well be happening in IoT devices, sensors, or networks. When an event occurs, interested parties can be notified. Event notification is usually done through messages, which are data representations of events.
+In an event-driven architecture, we identify event producers and event consumers. A producer is a component that detects the event and sends a notification. A consumer is a component that is notified when a specific event occurs. Producers and consumers don't know each other and work independently. A producer sends an event notification
+
+1 See Sam Newman, Monolith to Microservices (O'Reilly, 2019).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.1 Event-driven architectures
+
+329
+
+by publishing a message to a channel operated by an event broker that's responsible for collecting and routing messages to consumers. A consumer is notified by the broker when an event occurs and can act upon it.
+Producers and consumers have minimal coupling when using a broker that takes the processing and distribution of events on itself. In particular, they are temporally decoupled, because the interaction is asynchronous. Consumers can fetch and process messages at any time without affecting the producers whatsoever.
+In this section, you'll learn the fundamentals of event-driven models and how they can help build more resilient and loosely coupled applications in the cloud.
+10.1.1 Understanding the event-driven models
+Event-driven architectures can be based on two main models:
+ Publisher/subscriber (pub/sub)--This model is based on subscriptions. Producers publish events that are sent to all subscribers to be consumed. Events cannot be replayed after being received, so new consumers joining will not be able to get the past events.
+ Event streaming--In this model, events are written to a log. Producers publish events as they occur, and they are all stored in an ordered fashion. Consumers don't subscribe to them, but they can read from any part of the event stream. In this model, events can be replayed. Clients can join at any time and receive all the past events.
+In a basic scenario, consumers receive and process events as they arrive. For specific use cases like pattern matching, they can also process a series of events over a time window. In the event streaming model, consumers have the additional possibility of processing event streams. At the core of event-driven architectures are platforms that can process and route events. For example, RabbitMQ is a common choice to use with the pub/sub model. Apache Kafka is a powerful platform for event stream processing.
+The event streaming model is fascinating and growing in popularity, thanks to the many technologies developed in the last few years, allowing you to build real-time data pipelines. It's a complex model, though, that deserves its own book to be taught effectively. In this chapter, I will cover the pub/sub model.
+Before we analyze this model in more detail, I'll define some requirements for the Polar Bookshop system, and we'll use them as a means to explore event-driven architectures with the pub/sub model.
+10.1.2 Using the pub/sub model
+In the Polar Bookshop system, we need to implement an event-driven solution to allow different applications to communicate with each other asynchronously while reducing their coupling. These are the requirements:
+ When an order is accepted: ­ Order Service should notify interested consumers of the event. ­ Dispatcher Service should execute some logic to dispatch the order.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+330
+
+CHAPTER 10 Event-driven applications and functions
+
+ When an order is dispatched: ­ Dispatcher Service should notify consumers interested in such an event. ­ Order Service should update the order status in the database.
+If you paid attention, you probably noticed that the requirements don't specify which applications Order Service should notify upon order creation. In our example, only the new Dispatcher Service application will be interested in those events. Still, more applications might subscribe to the order creation events in the future. The beauty of this design is that you can evolve a software system and add more applications without affecting the existing ones at all. For example, you could add a Mail Service that sends an email to users whenever an order they made has been accepted, and Order Service wouldn't even be aware of it.
+This type of interaction should be asynchronous and can be modeled with the pub/sub model. Figure 10.1 illustrates the interaction and describes three flows for accepting, dispatching, and updating an order. They are temporally decoupled and executed asynchronously. You will probably notice that the operations for persisting data into a database and for producing events have the same numbered step. That's because they belong to the same unit of work (a transaction), as I'll explain later in the chapter.
+
+Accept order flow
+
+1. Submits order
+
+Order Service
+
+2. Sends accepted order
+notification
+
+Event broker
+
+User
+
+2. Saves accepted order
+
+Order database
+
+Event broker
+
+Dispatch order flow
+
+1. Receives accepted order
+notification
+2. Sends dispatched order
+notification
+
+Dispatcher Service
+2. Dispatches order
+
+Update order status flow
+
+1. Receives dispatched order
+notification Order Service
+
+Event broker
+
+2. Updates order status
+
+Order database
+
+Figure 10.1 Order Service and Dispatcher Service communicate asynchronously and indirectly by producing and consuming events that are collected and distributed by an event broker (RabbitMQ).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.2 Message brokers with RabbitMQ
+
+331
+
+In the rest of the chapter, you'll learn a few technologies and patterns you can use to implement this event-driven design for Polar Bookshop. RabbitMQ will be the eventprocessing platform responsible for collecting, routing, and distributing messages to consumers. Figure 10.2 highlights the event-driven part of the Polar Bookshop system after we introduce the Dispatcher Service application and RabbitMQ.
+
+Catalog Service [Container: Spring Boot]
+Provides functionality for managing the books in the catalog
+Reads from and writes to
+[JDBC]
+
+Checks books details
+[REST/HTTP]
+
+Order Service [Container: Spring Boot]
+Provides functionality for purchasing books
+
+Reads from and writes to [R2DBC]
+
+Dispatcher Service [Container: Spring Boot]
+
+Reads from and writes to [AMQP]
+
+Provides functionality for dispatching orders
+Reads from and writes to [AMQP]
+
+Catalog Database [Container: PostgreSQL]
+Stores book data
+Polar Bookshop [Software System]
+
+Order Database [Container: PostgreSQL]
+Stores order data
+
+Event Broker [Container: RabbitMQ]
+Provides event processing functionality
+
+Figure 10.2 In the Polar Bookshop system, Order Service and Dispatcher Service communicate asynchronously based on events distributed by RabbitMQ.
+
+The following section will introduce the basic concepts of RabbitMQ, its protocol, and how to run it in your local environment.
+
+10.2
+
+Message brokers with RabbitMQ
+A messaging system requires two main things: a message broker and a protocol. The Advanced Message Queuing Protocol (AMQP) ensures interoperability across platforms and reliable message delivery. It has become widely used in modern architectures, and it's a good fit in the cloud, where we need resilience, loose coupling, and scalability. RabbitMQ is a popular open source message broker that relies on AMQP and provides flexible asynchronous messaging, distributed deployment, and monitoring. Recent RabbitMQ versions have also introduced event streaming features.
+Spring provides broad support for the most-used messaging solutions. The Spring Framework itself has built-in support for the Java Message Service (JMS) API. The Spring AMQP project (https://spring.io/projects/spring-amqp) adds support for this messaging protocol and provides integration with RabbitMQ. Apache Kafka is another
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+332
+
+CHAPTER 10 Event-driven applications and functions
+
+technology that has become increasingly used in the last few years, such as to implement the event sourcing pattern or real-time stream processing. The Spring for Apache Kafka project (https://spring.io/projects/spring-kafka) provides that integration.
+This section will cover the fundamental aspects of the AMQP protocol and RabbitMQ, which is the message broker we'll use to implement messaging in the Polar Bookshop system. On the application side, we'll use Spring Cloud Stream, which offers convenient and robust integration with RabbitMQ by relying on the Spring AMQP project.
+10.2.1 Understanding AMQP for messaging systems
+When using an AMQP-based solution like RabbitMQ, the actors involved in the interaction can be categorized as follows:
+ Producer--The entity sending messages (publisher)  Consumer--The entity receiving messages (subscriber)  Message broker--The middleware accepting messages from producers and rout-
+ing them to consumers
+Figure 10.3 illustrates the interaction between the actors. From the protocol point of view, we can also say that the broker is the server, while producers and consumers are the clients.
+
+The AMQP actors
+
+Producer
+
+Sends messages to
+
+Message broker
+
+Receives messages from
+
+Consumer
+
+Figure 10.3 In AMQP, a broker accepts messages from producers and routes them to consumers.
+NOTE RabbitMQ was initially developed to support AMQP, but it also supports other protocols, including STOMP, MQTT, and even WebSockets for delivering messages over HTTP. Since version 3.9, it also supports event streaming.
+The AMQP messaging model is based on exchanges and queues, as illustrated in figure 10.4. Producers send messages to an exchange. RabbitMQ computes which queues should receive a copy of the message according to a given routing rule. Consumers read messages from a queue.
+The protocol establishes that a message comprises attributes and a payload, as shown in figure 10.5. AMQP defines some attributes, but you can add your own to pass the information that's needed to route the message correctly. The payload must be of a binary type and has no constraints besides that.
+Now that you know the basics of AMQP, let's get RabbitMQ up and running.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.2 Message brokers with RabbitMQ
+
+Producer
+
+AMQP message routing
+
+Message broker
+
+Sends messages
+to
+
+Routes messages
+to
+Exchange
+
+Queue
+
+Routes messages
+to
+
+Queue
+
+333
+
+Receives messages
+from
+
+Consumer
+
+Receives messages
+from
+
+Consumer
+
+Figure 10.4 Producers publish messages to an exchange. Consumers subscribe to queues. Exchanges route messages to queues according to a routing algorithm.
+
+Used by AMQP and/or the application. Stored as key/value pairs.
+
+AMQP Message Attributes Payload
+
+Used by the application. Stored as a byte array.
+
+Figure 10.5 An AMQP Message is composed of attributes and a payload.
+10.2.2 Using RabbitMQ for publish/subscribe communications
+RabbitMQ, on top of AMQP, provides a simple yet effective solution for implementing a publish/subscribe interaction that is precisely the one we want to establish between Order Service and Dispatcher Service. Besides the functionality itself, it's essential to look for those properties I addressed in previous chapters for cloud systems and data services, including resilience, high availability, and data replication. RabbitMQ offers all of that. For example, it provides delivery acknowledgment, clustering, monitoring, queue durability, and replication. Furthermore, several cloud providers offer integrations with managed RabbitMQ services.
+For now, you'll run RabbitMQ as a container on your local machine. First, make sure your Docker Engine is running. Then open the docker-compose.yml file located in your polar-deployment repository.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+334
+
+CHAPTER 10 Event-driven applications and functions
+
+NOTE If you haven't followed along with the examples, you can use Chapter10/ 10-begin/polar-deployment/docker/docker-compose.yml from the source code accompanying the book as a starting point.
+In your docker-compose.yml file, add a new service definition using the RabbitMQ official image (including the management plugin) and expose it through port 5672 (for AMQP) and 15672 (for the management console). The RabbitMQ management plugin is convenient for inspecting exchanges and queues from a browser-based UI.
+
+Listing 10.1 Defining a container for RabbitMQ
+
+version: "3.8"
+
+services: ... polar-rabbitmq: image: rabbitmq:3.10-management
+
+The official RabbitMQ image with the management plugin enabled
+
+Configuration file mounted as a volume
+
+container_name: polar-rabbitmq ports:
+- 5672:5672
+
+The port where RabbitMQ listens for AMQP requests
+
+- 15672:15672 volumes:
+
+The port that exposes the management GUI
+
+- ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+
+The configuration is based on a file mounted as a volume, similar to how we configured PostgreSQL. Create a docker/rabbitmq folder within your polar-deployment repository, and add a new rabbitmq.conf file to configure the default account.
+
+Listing 10.2 Configuring RabbitMQ default account
+default_user = user default_pass = password
+
+Next, open a Terminal window, navigate to the folder where your docker-compose.yml file is located, and run the following command to start RabbitMQ:
+
+$ docker-compose up -d polar-rabbitmq
+
+Finally, open a browser window and navigate to http://localhost:15672 to access the RabbitMQ management console. Log in using the credentials we defined in the configuration file (user/password) and have a look around. In the following sections you'll be able to follow the message flows between Order Service and Dispatcher Service in the Exchanges and Queues areas of the management console.
+When you're done exploring the RabbitMQ management console, you can shut it down as follows:
+
+$ docker-compose down
+
+Spring Cloud Stream helps integrate applications with event brokers like RabbitMQ seamlessly. But before we get to it, we need to define the logic that will process messages.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+335
+
+In the next section, you'll learn about Spring Cloud Function and how to implement the business logic of the new order flow in terms of suppliers, functions, and consumers.
+10.3 Functions with Spring Cloud Function
+Oleg Zhurakousky, project lead for Spring Cloud Function and Spring Cloud Stream, often asks conference audiences this question: Is there any business feature that you cannot define in terms of suppliers, functions, and consumers? It's an interesting and challenging question. Can you think of anything? Most software requirements can be expressed with functions.
+Why use functions in the first place? They are a simple, uniform, and portable programming model that is a perfect fit for event-driven architectures, inherently based on these concepts.
+Spring Cloud Function promotes the implementation of business logic via functions based on the standard interfaces introduced by Java 8: Supplier, Function, and Consumer.
+ Supplier--A supplier is a function with only output, no input. It's also known as a producer, publisher, or source.
+ Function--A function has both input and output. It's also known as a processor.  Consumer--A consumer is a function with input but no output. It's also known
+as a subscriber or sink.
+In this section, you'll learn how Spring Cloud Function works and how to implement business logic via functions.
+10.3.1 Using the functional paradigm in Spring Cloud Function
+Let's get started with functions by considering the business requirements I listed earlier for the Dispatcher Service application. Whenever an order is accepted, Dispatcher Service should be responsible for packing and labeling the order, and for notifying interested parties (in this case, the Order Service) once the order has been dispatched. For simplicity, let's assume that both the pack and label actions are performed by the application itself, and we'll consider how to implement the business logic via functions before even thinking about frameworks.
+The two actions to be performed as part of dispatching an order could be represented as functions:
+ The pack function takes the identifier of an accepted order as input, packs the order (in the example, the processing is represented by a log message), and returns the order identifier as output, ready to be labeled.
+ The label function takes the identifier of a packed order as input, labels the order (in the example, the processing is represented by a log message), and returns the order identifier as output, completing the dispatch.
+The composition of these two functions in sequence gives the full implementation of the business logic for Dispatcher Service, as shown in figure 10.6.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+336
+Order accepted
+
+CHAPTER 10 Event-driven applications and functions
+
+Function composition (overview) Dispatcher Service
+
+pack()
+
+label()
+
+Order dispatched
+
+Input data
+
+Data processing
+
+Output data
+
+Figure 10.6 The business logic for Dispatcher Service is implemented as a composition of two functions: pack and label.
+
+Let's see how we can implement these functions and what Spring Cloud Function brings to the table.
+INITIALIZING A SPRING CLOUD FUNCTION PROJECT You can initialize the Dispatcher Service project from Spring Initializr (https://start .spring.io) and store the result in a new dispatcher-service Git repository. The parameters for the initialization are shown in figure 10.7.
+
+Figure 10.7 The parameters for initializing the Dispatcher Service project Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+337
+
+TIP In the begin folder for this chapter, you can find a curl command that you can run in a Terminal window. It downloads a zip file containing all the code you need to get started, without going through the manual generation on the Spring Initializr website.
+The resulting dependencies section of the build.gradle file looks like this:
+
+dependencies { implementation 'org.springframework.boot:spring-boot-starter' implementation 'org.springframework.cloud:spring-cloud-function-context' testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+The main dependencies are
+ Spring Boot (org.springframework.boot:spring-boot-starter)--Provides basic Spring Boot libraries and auto-configuration.
+ Spring Cloud Function (org.springframework.cloud:spring-cloud-functioncontext)--Provides the Spring Cloud Function libraries that promote and support business logic implementation via functions.
+ Spring Boot Test (org.springframework.boot:spring-boot-starter-test)-- Provides several libraries and utilities for testing applications, including Spring Test, JUnit, AssertJ, and Mockito. It's automatically included in every Spring Boot project.
+Next, rename the autogenerated application.properties file to application.yml, and configure the server port and application name. At present, the application doesn't contain a web server. Nevertheless, we'll configure the server port number because it will be used when we add monitoring capabilities to the application in chapter 13.
+
+Listing 10.3 Configuring server and application name
+
+server: port: 9003
+spring:
+
+The port that will be used by the embedded web server
+
+application: name: dispatcher-service
+
+The name of the application
+
+Next, let's see how we can implement the business logic using functions.
+IMPLEMENTING THE BUSINESS LOGIC VIA FUNCTIONS The business logic can be implemented in a standard way by using the Java Function interface. No Spring needed.
+Let's first consider the pack function. The input of the function should provide the identifier of an order that has previously been accepted. We can model this data via a simple DTO.
+In the com.polarbookshop.dispatcherservice package, create an OrderAcceptedMessage record to hold the order identifier.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+338
+
+CHAPTER 10 Event-driven applications and functions
+
+Listing 10.4 A DTO representing the event about orders being accepted
+package com.polarbookshop.dispatcherservice;
+
+public record OrderAcceptedMessage ( Long orderId
+){}
+
+DTO containing the order identifier as a Long field
+
+NOTE Modeling events is a fascinating topic that goes beyond Spring and would require a few chapters to cover properly. If you'd like to learn more about this subject, I recommend reading these articles by Martin Fowler: "Focusing on Events" (https://martinfowler.com/eaaDev/EventNarrative.html); "Domain Event" (https://martinfowler.com/eaaDev/DomainEvent.html); and "What do you mean by `Event-Driven'?" (https://martinfowler.com/articles/ 201701-event-driven.html), all on his MartinFowler.com blog.
+
+The output of the function can be the simple identifier of the packed order represented as a Long object.
+Now that input and output are clear, it's time to define the function. Create a new DispatchingFunctions class, and add a pack() method to implement order packing as a function.
+
+Listing 10.5 Implementing the "pack" action as a function
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.slf4j.Logger; import org.slf4j.LoggerFactory;
+
+public class DispatchingFunctions { private static final Logger log = LoggerFactory.getLogger(DispatchingFunctions.class);
+public Function<OrderAcceptedMessage, Long> pack() {
+
+Function implementing the order-packing business logic
+
+return orderAcceptedMessage -> { log.info("The order with id {} is packed.", orderAcceptedMessage.orderId()); return orderAcceptedMessage.orderId();
+
+It takes an OrderAcceptedMessage object as input.
+
+}; } }
+
+Returns an order identifier (Long) as output
+
+You can see how there's only standard Java code in this listing. I strive to provide realworld examples in this book, so you might wonder what's happening here. In this case, I decided to focus on the essential aspects of using the functional programming paradigm in the context of an event-driven application. Inside the function, you can add any processing logic you like. What matters here is the contract provided by the function, its signature: inputs and outputs. After defining that, you're free to implement the function as needed. I could have provided a more real-world implementation
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+339
+
+of this function, but it would have added nothing valuable considering the goal of this chapter. It doesn't even have to be Spring-based code. And in this example, it's not: it's plain Java code.
+Spring Cloud Function is capable of managing functions defined in different ways, as long as they adhere to the standard Java interfaces Function, Supplier, and Consumer. You can make Spring Cloud Function aware of your functions by registering them as beans. Go ahead and do that for the pack() function by annotating the DispatchingFunctions class as @Configuration and the method as @Bean.
+
+Listing 10.6 Configuring the function as a bean
+
+@Configuration public class DispatchingFunctions {
+private static final Logger log =
+
+Functions are defined in a configuration class.
+
+LoggerFactory.getLogger(DispatchingFunctions.class);
+
+@Bean public Function<OrderAcceptedMessage, Long> pack() {
+return orderAcceptedMessage -> { log.info("The order with id {} is packed.", orderAcceptedMessage.orderId()); return orderAcceptedMessage.orderId();
+}; } }
+
+Functions defined as beans can be discovered and managed by Spring Cloud Function.
+
+As you'll see later, functions registered as beans are enhanced with extra features by the Spring Cloud Function framework. The beauty of this is that the business logic itself is not aware of the surrounding framework. You can evolve it independently and test it without being concerned about framework-related issues.
+USING IMPERATIVE AND REACTIVE FUNCTIONS Spring Cloud Function supports both imperative and reactive code, so you're free to implement functions using reactive APIs like Mono and Flux. You can also mix and match. For the sake of the example, let's implement the label function using Project Reactor. The input of the function will be the identifier of an order that has been packed, represented as a Long object. The output of the function will be the identifier of the order that has been labeled, resulting in the dispatching process being complete. We can model such data via a simple DTO, just like we did for OrderAcceptedMessage.
+In the com.polarbookshop.dispatcherservice package, create an OrderDispatchedMessage record to hold the identifier for a dispatched order.
+
+Listing 10.7 A DTO representing the event about orders being dispatched
+
+package com.polarbookshop.dispatcherservice;
+public record OrderDispatchedMessage ( Long orderId
+){}
+
+DTO containing the order identifier as a Long field
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+340
+
+CHAPTER 10 Event-driven applications and functions
+
+Now that the input and output are clear, it's time to define the function. Open the DispatchingFunctions class and add a label() method to implement the order labeling as a function. Since we want it to be reactive, both input and output are wrapped in a Flux publisher.
+
+Listing 10.8 Implementing the "label" action as a function
+
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import reactor.core.publisher.Flux; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration;
+
+@Configuration public class DispatchingFunctions {
+private static final Logger log = LoggerFactory.getLogger(DispatchingFunctions.class);
+
+... @Bean
+
+Function implementing the order-labeling business logic
+
+public Function<Flux<Long>, Flux<OrderDispatchedMessage>> label() {
+
+return orderFlux -> orderFlux.map(orderId -> {
+
+log.info("The order with id {} is labeled.", orderId);
+
+return new OrderDispatchedMessage(orderId);
+
+}); } }
+
+Returns an OrderDispatchedMessage
+as output
+
+It takes an order identifier (Long) as input.
+
+We have just implemented both functions, so let's see how we can combine and use them.
+
+10.3.2 Composing and integrating functions: REST, serverless, data streams
+The implementation of the business logic for Dispatcher Service is almost done. We still need a way to compose the two functions. Based upon our requirements, dispatching an order consists of two steps to be executed in sequence: pack() first and label() after.
+Java provides features to compose Function objects in sequence using the andThen() or compose() operators. The problem is that you can use them only when the output type of the first function is the same as the second function's input. Spring Cloud Function provides a solution to that problem and lets you compose functions seamlessly through transparent type conversion, even between imperative and reactive functions like those we defined earlier.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+341
+
+Composing functions with Spring Cloud is as simple as defining a property in your application.yml (or application.properties) file. Open the application.yml file in your Dispatcher Service project, and configure Spring Cloud Function to manage and compose the pack() and label() functions as follows.
+
+Listing 10.9 Declaring the functions managed by Spring Cloud
+
+spring: cloud: function: definition: pack|label
+
+Definition of the function managed by Spring Cloud Function
+
+The spring.cloud.function.definition property lets you declare which functions you want Spring Cloud Function to manage and integrate, resulting in a specific data flow. In the previous section, we implemented the basic pack() and label() functions. Now we can instruct Spring Cloud Function to use them as building blocks and produce a new function that comes from the composition of those two.
+In a serverless application like those meant to be deployed on a FaaS platform (such as AWS Lambda, Azure Functions, Google Cloud Functions, or Knative), you would usually have one function defined per application. The cloud function definition can be mapped one-to-one to a function declared in your application, or you can use the pipe (|) operator to compose functions together in a data flow. If you need to define multiple functions, you can use the semicolon (;) character as the separator instead of the pipe (|).
+To sum up, you only need to implement standard Java functions, and you can then configure Spring Cloud Function to use them as they are or after combining them. The framework will do the rest, including transparently converting input and output types to make the composition possible. Figure 10.8 illustrates the function composition.
+
+Function composition (details)
+
+OrderAccepted Message
+
+Pack()
+
+Long
+
+Flux<Long>
+
+Label()
+
+Flux<Order Dispatched Message>
+
+Figure 10.8 You can combine functions with different input and output types and mix imperative and reactive types as well. Spring Cloud Function will transparently handle any type conversion.
+At this point you're probably wondering how you can use these functions. That's my favorite part. Once you define the functions, the framework can expose them in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+342
+
+CHAPTER 10 Event-driven applications and functions
+
+different ways depending on your needs. For example, Spring Cloud Function can automatically expose the functions defined in spring.cloud.function.definition as REST endpoints. Then you can directly package the application, deploy it on a FaaS platform like Knative, and voilà: you've got your first serverless Spring Boot application. That's what we'll do in chapter 16 when we build serverless applications. Or you can use one of the adapters provided by the framework to package the application and deploy it on AWS Lambda, Azure Functions, or Google Cloud Functions. Or you can combine it with Spring Cloud Stream and bind the function to message channels in an event broker like RabbitMQ or Kafka.
+Before we explore the integration with RabbitMQ using Spring Cloud Stream, I want to show you how to test the functions and their composition in isolation. Once the business logic is implemented as functions and tested, we can be sure it will work the same way, whether it's triggered by a REST endpoint or an event notification.
+10.3.3 Writing integration tests with @FunctionalSpringBootTest
+Using the functional programming paradigm, we can implement business logic in standard Java and write unit tests with JUnit without being affected by the framework. At that level there is no Spring code, just plain Java. Once you've ensured that each function works, you'll want to write some integration tests to verify your application's overall behavior when your functions are processed by Spring Cloud Function and exposed the way you configured.
+Spring Cloud Function provides a @FunctionalSpringBootTest annotation you can use to set up the context for your integration tests. Unlike unit tests, you don't want to invoke the function directly but rather ask the framework to provide that for you. All the functions managed by the framework are available through the FunctionCatalog, an object that acts as a function registry. When the framework serves the function, it doesn't only contain the implementation you wrote; it's enhanced with extra features offered by Spring Cloud Function, like transparent type conversion and function composition. Let's see how this works.
+First, you need to add a test dependency on Reactor Test in the build.gradle file, since part of the business logic is implemented using Reactor. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 10.10 Adding dependency for Reactor Test in Dispatcher Service
+dependencies { ... testImplementation 'io.projectreactor:reactor-test'
+}
+Then, in the src/test/java folder of your Dispatcher Service project, create a new DispatchingFunctionsIntegrationTests class. You can write integration tests for the two functions individually, but it's more interesting verifying the behavior of the composed function, pack() + label(), as provided by Spring Cloud Function.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+343
+
+Listing 10.11 Integration tests for a function composition
+
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.junit.jupiter.api.Test; import reactor.core.publisher.Flux; import reactor.test.StepVerifier; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.cloud.function.context.FunctionCatalog; import org.springframework.cloud.function.context.test
+ .FunctionalSpringBootTest;
+
+@FunctionalSpringBootTest class DispatchingFunctionsIntegrationTests {
+
+@Autowired private FunctionCatalog catalog;
+
+@Test
+
+void packAndLabelOrder() {
+
+Function<OrderAcceptedMessage, Flux<OrderDispatchedMessage>>
+
+packAndLabel = catalog.lookup(
+
+Function.class, "pack|label");
+long orderId = 121;
+
+Gets the composed function from the FunctionCatalog
+
+Defines an OrderAcceptedMessage, which is the input to the function
+
+StepVerifier.create(packAndLabel.apply( new OrderAcceptedMessage(orderId)
+)) .expectNextMatches(dispatchedOrder ->
+
+Asserts that the output of the function is the expected OrderDispatchedMessage object
+
+dispatchedOrder.equals(new OrderDispatchedMessage(orderId)))
+
+.verifyComplete();
+
+}
+
+}
+
+Finally, open a Terminal window, navigate to the Dispatcher Service project root folder, and run the tests:
+$ ./gradlew test --tests DispatchingFunctionsIntegrationTests
+
+This type of integration test ensures the correct behavior of the defined cloud function, independently of how it will be exposed. In the source code accompanying the book, you'll find a broader set of autotests (Chapter10/10-intermediate/dispatcherservice).
+Functions are a simple yet effective way to implement business logic and delegate infrastructural concerns to the framework. In the next section you'll learn how to bind functions to message channels on RabbitMQ using Spring Cloud Stream.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+344
+
+CHAPTER 10 Event-driven applications and functions
+
+10.4
+
+Processing messages with Spring Cloud Stream
+The principles that drive the Spring Cloud Function framework can also be found in Spring Cloud Stream. The idea is that you, as a developer, are responsible for the business logic, while the framework handles infrastructural concerns like how to integrate a message broker.
+Spring Cloud Stream is a framework for building scalable, event-driven, and streaming applications. It's built on top of Spring Integration, which offers the communication layer with message brokers; Spring Boot, which provides auto-configuration for the middleware integration; and Spring Cloud Function, which produces, processes, and consumes events. Spring Cloud Stream relies on the native features of each message broker, but it also provides an abstraction to ensure a seamless experience independently of the underlying middleware. For example, features like consumer groups and partitions (native in Apache Kafka) are not present in RabbitMQ, but you can still use them thanks to the framework providing them for you.
+My favorite Spring Cloud Stream feature is that you can drop a dependency in a project like Dispatcher Service and get functions automatically bound to an external message broker. The best part of it? You don't have to change any code in the application, just the configuration in application.yml or application.properties. In previous versions of the framework, it was necessary to use dedicated annotations to match the business logic with the Spring Cloud Stream components. Now it's completely transparent.
+The framework supports integrations with RabbitMQ, Apache Kafka, Kafka Streams, and Amazon Kinesis. There are also integrations maintained by partners for Google PubSub, Solace PubSub+, Azure Event Hubs, and Apache RocketMQ.
+This section will cover how to expose the composed function we defined in Dispatcher Service through message channels in RabbitMQ.
+
+10.4.1 Configuring the integration with RabbitMQ
+Spring Cloud Stream is based on a few essential concepts:
+ Destination binder--The component providing the integration with external messaging systems, like RabbitMQ or Kafka
+ Destination binding--The bridge between the external messaging system entities, like queues and topics, and the application-provided producers and consumers
+ Message--The data structure used by the application producers and consumers to communicate with the destination binders, and therefore with the external messaging systems
+All three of these are handled by the framework itself. The core of your application, the business logic, is not aware of the external messaging system. Destination binders are responsible for letting the application communicate with the external message brokers, including any vendor-specific concerns. The bindings are auto-configured by the framework, but you can still provide your own configuration to adapt them to your
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+345
+
+needs, as we'll do for Dispatcher Service. Figure 10.9 shows a model of a Spring Boot application using Spring Cloud Stream.
+
+Spring Cloud Stream: Application model
+Spring Boot application Destination binder
+
+Kafka
+
+Destination binding
+
+Function
+
+Destination binding
+
+RabbitMQ
+
+Figure 10.9 In Spring Cloud Stream, a destination binder provides integration with external messaging systems and establishes message channels with them.
+Once you have defined the business logic of your application as functions, and you've configured Spring Cloud Function to manage them (like we did for Dispatcher Service), you can expose the functions through a message broker by adding a dependency on the Spring Cloud Stream binder project specific to the broker you want to use. I'll show you how to work with RabbitMQ both for input and output message channels, but you can also bind to multiple messaging systems within the same application. INTEGRATING RABBITMQ WITH SPRING First, open the build.gradle file for the Dispatcher Service project (dispatcher-service), and replace the Spring Cloud Function dependency with the RabbitMQ binder for Spring Cloud Stream. Since Spring Cloud Function is already included in Spring Cloud Stream, you don't need to add it explicitly. You can also remove the dependency on Spring Boot Starter, which is also included in the Spring Cloud Stream dependency. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 10.12 Updating dependencies in Dispatcher Service
+dependencies { implementation
+ 'org.springframework.cloud:spring-cloud-stream-binder-rabbit'
+testImplementation 'org.springframework.boot:spring-boot-starter-test' testImplementation 'io.projectreactor:reactor-test' }
+Licensed to Zhigang Li <lzg14@qq.com>
+
+346
+
+CHAPTER 10 Event-driven applications and functions
+
+Next, open the application.yml file and add the following configuration for the RabbitMQ integration. Port, username, and password are the same ones we previously defined in Docker Compose (listings 10.1 and 10.2).
+
+Listing 10.13 Configuring the RabbitMQ integration
+
+spring: rabbitmq: host: localhost port: 5672 username: user password: password connection-timeout: 5s
+
+That's it. If you run the Dispatcher Service, you'll notice it already works perfectly without further configuration. Spring Cloud Stream will auto-generate and configure the bindings to exchanges and queues in RabbitMQ.
+That's great for getting up and running quickly, but you will probably want to add your own configuration to customize the behavior for a production scenario. The following section will show you how to do that, again without changing any code in your business logic. How great is that?
+
+10.4.2 Binding functions to message channels
+Getting started with Spring Cloud Stream is straightforward, but there's a chance of confusing concepts with similar names. In the context of message brokers and Spring Cloud Stream, the term binding and its variations are used a lot and can lead to misunderstandings. Figure 10.10 shows all the entities in place.
+
+Destination binder
+
+Provides integration between the Spring Cloud Stream: Terminology
+
+application and external messaging
+
+systems
+
+Spring Boot application
+
+RabbitMQ
+
+Destination binder
+
+Exchange
+
+Queue Queue
+
+Destination binding (input)
+
+Function
+
+Destination binding (output)
+
+RabbitMQ
+
+Exchange
+
+Queue
+
+Queue
+
+Destination binding
+Bridge between application producers/consumers and the external messaging systems (exchanges/queues)
+Figure 10.10 In Spring Cloud Stream, bindings establish message channels between applications and message brokers.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+347
+
+Spring Cloud Stream provides a Spring Boot application with a destination binder that integrates with an external messaging system. The binder is also responsible for establishing communication channels between the application producers and consumers and the messaging system entities (exchanges and queues for RabbitMQ). These communication channels are called destination bindings, and they are bridges between applications and brokers.
+A destination binding can be either an input channel or an output channel. By default, Spring Cloud Stream maps each binding (both input and output) to an exchange in RabbitMQ (a topic exchange, to be more precise). Furthermore, for each input binding, it binds a queue to the related exchange. That's the queue from which consumers receive and process events. This setup provides all the plumbing for implementing event-driven architectures based on the pub/sub model.
+In the following sections, I'll tell you more about destination bindings in Spring Cloud Stream and how they relate to exchanges and queues in RabbitMQ.
+UNDERSTANDING DESTINATION BINDINGS As you can see in figure 10.10, destination bindings are an abstraction representing a bridge between application and broker. When using the functional programming model, Spring Cloud Stream generates an input binding for each function accepting input data, and an output binding for each function returning output data. Each binding is assigned a logical name following this convention:
+ Input binding: <functionName> + -in- + <index>  Output binding: <functionName> + -out- + <index>
+Unless you use partitions (for example, with Kafka), the <index> part of the name will always be 0. The <functionName> is computed from the value of the spring.cloud .function.definition property. In case of a single function, there is a one-to-one mapping. For example, if in Dispatcher Service we only had one function called dispatch, the related binding would be named dispatch-in-0 and dispatch-out-0. We actually used a composed function (pack|label), so the binding names are generated by combining the names of all the functions involved in the composition:
+ Input binding: packlabel-in-0  Output binding: packlabel-out-0
+These names are only relevant for configuring the bindings themselves in the application. They're like unique identifiers that let you reference a specific binding and apply custom configuration. Notice that these names exist only in Spring Cloud Stream-- they're logical names. RabbitMQ doesn't know about them.
+CONFIGURING DESTINATION BINDINGS By default, Spring Cloud Stream uses the binding names to generate the names for exchanges and queues in RabbitMQ, but in a production scenario you'd probably want to manage them explicitly for several reasons. For example, it's likely that both
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+348
+
+CHAPTER 10 Event-driven applications and functions
+
+exchanges and queues already exist in production. You will also want to control different options for exchanges and queues, like durability or routing algorithms.
+For Dispatcher Service, I'll show you how to configure input and output bindings. At startup, Spring Cloud Stream will check if the related exchanges and queues already exist in RabbitMQ. If they don't, it will create them according to your configuration.
+Let's start by defining the destination names that will be used to name exchanges and queues in RabbitMQ. In your Dispatcher Service project, update the application.yml file as follows.
+
+Listing 10.14 Configuring Cloud Stream bindings and RabbitMQ destinations
+
+spring: cloud:
+
+Section for configuring destination bindings
+
+function:
+
+definition: pack|label
+
+The input binding
+
+stream: bindings: packlabel-in-0:
+
+The output binding
+
+destination: order-accepted group: ${spring.application.name} packlabel-out-0:
+
+destination: order-dispatched
+
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+The consumer group interested in the destination (same as the application name)
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+The output binding (packlabel-out-0) will be mapped to an order-dispatched exchange in RabbitMQ. The input binding (packlabel-in-0) will be mapped to an order-accepted exchange and an order-accepted.dispatcher-service queue in RabbitMQ. If they don't exist already in RabbitMQ, the binder will create them. The queue-naming strategy (<destination>.<group>) includes a parameter called consumer group.
+The idea of consumer groups has been borrowed from Kafka and is very useful. In a standard pub/sub model, all consumers receive a copy of the messages sent to the queues they're subscribed to. That is convenient when different applications need to process the messages. But in a cloud native context, where multiple instances of an application are running simultaneously for scaling and resilience, that would be a problem. If you have numerous Dispatcher Service instances, you don't want an order to be dispatched from all of them. That would lead to errors and an inconsistent state.
+Consumer groups solve the problem. All consumers in the same group share a single subscription. As a consequence, each message arriving at the queue to which they're subscribed will be processed by one consumer only. Assume we have two applications (Dispatcher Service and Mail Service) interested in receiving events about accepted orders and deployed in a replicated fashion. Using the application name to configure consumer groups, we can ensure that each event is received and processed by a single instance of Dispatcher Service and a single instance of Mail Service, as shown in figure 10.11.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+349
+
+Consumer groups with Spring Cloud Stream and RabbitMQ
+
+Exchange order-accepted
+
+RabbitMQ Queue
+order-accepted.dispatcher-service
+Queue order-accepted.mail-service
+
+Consumer group
+
+Dispatcher service
+
+Dispatcher service
+
+Consumer group
+
+Mail service
+
+Mail service
+
+Figure 10.11 Consumer groups ensure that each message is received and processed by only one consumer within the same group.
+EXPLORING EXCHANGES AND QUEUES IN RABBITMQ After configuring the integration with RabbitMQ through Spring Cloud Stream, it's time to try running Dispatcher Service.
+First, start a RabbitMQ container. Open a Terminal window, navigate to the folder in your polar-deployment repository where you keep your docker-compose.yml file (polar-deployment/docker), and run the following command:
+$ docker-compose up -d polar-rabbitmq
+Then open another Terminal window, navigate to the Dispatcher Service project's root folder (dispatcher-service), and run the application as follows:
+$ ./gradlew bootRun
+The application logs will already give you a hint of what happened, but for a clearer understanding, let's check the RabbitMQ management console (exposed through port 15672).
+Open a browser window and navigate to http://localhost:15672. The credentials are the same that we defined in Docker Compose (user/password). Then go to the Exchanges section. Figure 10.12 shows a list of default exchanges provided by RabbitMQ and the two exchanges generated by our application: order-accepted and order-dispatched. Spring Cloud Stream maps them to the packlabel-in-0 and packlabel-out-0 bindings respectively. The exchanges are durable (denoted by the D icon in the management console), meaning that they will survive a broker restart.
+Next, let's take a look at the queues. In Dispatcher Service we configured a packlabel-in-0 binding and a consumer group. That's the only input channel for the application, so it should result in a single queue. Let's verify that. In the RabbitMQ management console, as illustrated in figure 10.13, you can see a durable orderaccepted.dispatcher-service queue in the Queues section.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+350
+
+CHAPTER 10 Event-driven applications and functions
+
+Figure 10.12 Spring Cloud Stream maps the two destination binding to two exchanges in RabbitMQ.
+Figure 10.13 Spring Cloud Stream maps each input binding to a queue, named according to the configured consumer group.
+NOTE No queue has been created for the packlabel-out-0 binding because no consumer subscribed to it. Later you'll see that a queue will be created after configuring Order Service to listen to it. We can verify that the integration works by manually sending a message to the orderaccepted exchange. If everything is configured correctly, Dispatcher Service will read the message from the order-accepted.dispatcher-service queue, process it through
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+351
+
+the composed function pack|label, and finally send it to the order-dispatched exchange.
+Go to the Exchanges section again, select the order-accepted exchange, and in the Publish Message panel, insert an OrderAcceptedMessage object in JSON format, as shown in figure 10.14. When you're done, click the Publish Message button.
+
+Figure 10.14 You can trigger the data flow in Dispatcher Service by sending a message to the order-accepted exchange.
+In the application logs, you should see the following messages signaling that the data flow happened correctly:
+...c.p.d.DispatchingFunctions: The order with id 394 is packed. ...c.p.d.DispatchingFunctions: The order with id 394 is labeled.
+The output message has been sent to the order-dispatched exchange, but it has not been routed to any queue because no consumer has subscribed. In the final part of this chapter, we'll complete the flow by defining a supplier in Order Service to publish messages to the order-accepted exchange whenever an order is accepted, and a consumer to read messages from the order-dispatched queue whenever an order is dispatched. But first, let's add some tests to verify the integration with the Spring Cloud Stream binder.
+Before moving on, stop the application process with Ctrl-C and the RabbitMQ container with docker-compose down.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+352
+
+CHAPTER 10 Event-driven applications and functions
+
+10.4.3 Writing integration tests with a test binder
+As I have stressed several times, Spring Cloud Function and Spring Cloud Stream's whole philosophy is about keeping the application's business logic infrastructure--and middleware--neutral. After defining the original pack() and label() functions, all we did was update dependencies in Gradle and modify the configuration in application.yml.
+It's a good idea to have unit tests covering the business logic, independent of the framework. But it's worth adding a few integration tests to cover the application's behavior in a Spring Cloud Stream context. You should disable the integration tests you wrote earlier in the DispatchingFunctionsIntegrationTests class, since now you'll want to test the integration with the external messaging system.
+The framework provides a binder specifically for implementing integration tests focusing on the business logic rather than the middleware. Let's see how it works, using Dispatcher Service as an example.
+NOTE The test binder provided by Spring Cloud Stream is meant to verify the correct configuration and integration with a technology-agnostic destination binder. If you want to test the application against a specific broker (in our case, it would be for RabbitMQ), you can rely on Testcontainers, as you learned in the previous chapter. I'll leave that up to you as an exercise.
+First, add a dependency to the test binder in the build.gradle file of your Dispatcher Service project. Unlike the other dependencies we've been working on so far, the test binder requires a more elaborate syntax to be included. For more information, refer to the Spring Cloud Stream documentation (https://spring.io/projects/spring-cloud-stream). Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 10.15 Adding a dependency for the test binder in Dispatcher Service
+dependencies { ... testImplementation("org.springframework.cloud:spring-cloud-stream") { artifact { name = "spring-cloud-stream" extension = "jar" type ="test-jar" classifier = "test-binder" } }
+}
+Next, create a new FunctionsStreamIntegrationTests class for testing. The test setup consists of three steps:
+1 Import the TestChannelBinderConfiguration class providing configuration for the test binder.
+2 Inject an InputDestination bean representing the input binding packlabelin-0 (by default, since it's the only one).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+353
+
+3 Inject an OutputDestination bean representing the output binding packlabelout-0 (by default, since it's the only one).
+The data flow is based on Message objects (from the org.springframework.messaging package). The framework handles type conversion for you transparently when running the application. However, in this type of test, you need to provide Message objects explicitly. You can use MessageBuilder to create the input message, and use the ObjectMapper utility to perform the type conversion from the binary format used for storing message payloads in a broker.
+
+Listing 10.16 Testing the integration with external messaging systems
+
+package com.polarbookshop.dispatcherservice;
+
+Sends a message to
+the input channel
+
+import java.io.IOException; import com.fasterxml.jackson.databind.ObjectMapper; import org.junit.jupiter.api.Test; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.boot.test.context.SpringBootTest; import org.springframework.cloud.stream.binder.test.InputDestination; import org.springframework.cloud.stream.binder.test.OutputDestination; import org.springframework.cloud.stream.binder.test.
+TestChannelBinderConfiguration;
+import org.springframework.context.annotation.Import; import org.springframework.integration.support.MessageBuilder; import org.springframework.messaging.Message; import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest @Import(TestChannelBinderConfiguration.class)
+
+Configures the test binder
+
+class FunctionsStreamIntegrationTests {
+@Autowired private InputDestination input;
+
+Represents the input binding packlabel-in-0
+
+@Autowired private OutputDestination output;
+
+Represents the output binding packlabel-out-0
+
+@Autowired private ObjectMapper objectMapper;
+
+Uses Jackson to deserialize JSON message payloads to Java objects
+
+@Test
+
+void whenOrderAcceptedThenDispatched() throws IOException {
+
+long orderId = 121;
+
+Message<OrderAcceptedMessage> inputMessage = MessageBuilder
+
+.withPayload(new OrderAcceptedMessage(orderId)).build();
+
+Message<OrderDispatchedMessage> expectedOutputMessage = MessageBuilder
+
+.withPayload(new OrderDispatchedMessage(orderId)).build();
+
+this.input.send(inputMessage);
+
+assertThat(objectMapper.readValue(output.receive().getPayload(),
+
+OrderDispatchedMessage.class))
+
+.isEqualTo(expectedOutputMessage.getPayload()); } }
+
+Receives and asserts a message from the output channel
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+354
+
+CHAPTER 10 Event-driven applications and functions
+
+WARNING If you use IntelliJ IDEA, you might get a warning that InputDestination, OutputDestination, and ObjectMapper cannot be autowired. Don't worry. It's a false positive. You can get rid of the warning by annotating the field with @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection").
+Message brokers like RabbitMQ deal with binary data, so any data flowing through them is mapped to byte[] in Java. The conversion between bytes and DTOs is handled by Spring Cloud Stream transparently. But just like for messages, we need to handle that explicitly in this test scenario when asserting the content of the message received from the output channel.
+After writing the integration tests, open a Terminal window, navigate to the Dispatcher Service project's root folder, and run the tests:
+$ ./gradlew test --tests FunctionsStreamIntegrationTests
+The next section will go through some points to consider regarding resilient integrations with messaging systems.
+10.4.4 Making messaging resilient to failures
+Event-driven architectures solve some issues affecting synchronous request/response interactions. For example, if you remove the temporal coupling between applications, you won't need to adopt patterns like circuit breakers, since the communication will be asynchronous. If the consumer is momentarily unavailable while the producer sends a message, it doesn't matter. The consumer will receive the message once it's up and running again.
+In software engineering, there are no silver bullets. Everything comes at a cost. On the one hand, applications that are decoupled can operate more independently. On the other hand, you introduced a new component in your system that needs to be deployed and maintained: the message broker.
+Assuming that part is taken care of by the platform, there's still something for you to do as the application developer. When an event happens and your application wants to publish a message, something might go wrong. Retries and timeouts are still helpful, but this time we'll use them to make the interaction between application and broker more resilient. Spring Cloud Stream uses the retry pattern with an exponential backoff strategy by default, relying on the Spring Retry library for imperative consumers and the retryWhen() Reactor operator for reactive consumers (the one you learned about in chapter 8). As usual, you can customize it via configuration properties.
+Spring Cloud Stream defines several defaults to make the interaction more resilient, including error channels and graceful shutdown. You can configure different aspects of message processing, including dead-letter queues, acknowledgment flows, and republishing messages on error.
+RabbitMQ itself has several features in place to improve reliability and resilience. Among other things, it guarantees that each message is delivered at least once. Be
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+355
+
+aware that consumers in your applications might receive the same message twice, so your business logic should know how to identify and handle duplicates.
+I won't go further into the details, since this is an extensive subject that would require several dedicated chapters to cover it adequately. Instead, I encourage you to read the documentation for the different projects involved in your event-driven architecture: RabbitMQ (https://rabbitmq.com), Spring AMQP (https://spring.io/projects/ spring-amqp), and Spring Cloud Stream (https://spring.io/projects/spring-cloud -stream). You can also check out the event-driven patterns described in Sam Newman's Building Microservices (O'Reilly, 2021) and Chris Richardson's Microservices Patterns (Manning, 2018).
+In the last part of the chapter, you'll work with suppliers and consumers and complete the order flow for the Polar Bookshop system.
+
+10.5
+
+Producing and consuming messages with Spring Cloud Stream
+In previous sections, you learned about the functional programming paradigm and how it fits in the Spring ecosystem, using Spring Cloud Function and Spring Cloud Stream. This last section will guide you through the implementation of producers and consumers.
+As you'll see, consumers are not that different from the functions you wrote in Dispatcher Service. On the other hand, producers are slightly different because, unlike functions and consumers, they are not naturally activated. I'll show you how to use them both in Order Service while implementing the last part of the order flow for the Polar Bookshop system.
+
+10.5.1 Implementing event consumers, and the problem of idempotency
+The Dispatcher Service application we previously built produces messages when orders are dispatched. The Order Service should be notified when that happens so that it can update the order status in the database.
+First, open your Order Service project (order-service), and add the dependencies on Spring Cloud Stream and the test binder in the build.gradle file. Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 10.17 Adding dependency for Spring Cloud Stream and test binder
+
+dependencies { ... implementation 'org.springframework.cloud:
+ spring-cloud-stream-binder-rabbit'
+testImplementation("org.springframework.cloud:spring-cloud-stream") { artifact { name = "spring-cloud-stream" extension = "jar" type ="test-jar" classifier = "test-binder"
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+356
+
+CHAPTER 10 Event-driven applications and functions
+
+} } }
+
+Next we need to model the event we'd like Order Service to listen to. Create a new com.polarbookshop.orderservice.order.event package, and add an OrderDispatchedMessage class to hold the identifier for a dispatched order.
+
+Listing 10.18 A DTO representing the event about orders being dispatched
+package com.polarbookshop.orderservice.order.event;
+
+public record OrderDispatchedMessage ( Long orderId
+){}
+
+Now we'll implement the business logic using a functional approach. Create an OrderFunctions class (com.polarbookshop.orderservice.order.event package), and implement a function to consume the messages produced by the Dispatcher Service application when an order is dispatched. The function will be a Consumer responsible for listening to the incoming messages and updating the database entities accordingly. Consumer objects are functions with input but no output. To keep the function clean and readable, we'll move the processing of OrderDispatchedMessage objects to the OrderService class (which we'll implement in a minute).
+
+Listing 10.19 Consuming messages from RabbitMQ
+package com.polarbookshop.orderservice.order.event;
+
+import java.util.function.Consumer; import com.polarbookshop.orderservice.order.domain.OrderService; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import reactor.core.publisher.Flux; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration;
+
+@Configuration public class OrderFunctions {
+
+private static final Logger log = LoggerFactory.getLogger(OrderFunctions.class);
+
+For each order
+updated in the database,
+it logs a message.
+
+@Bean
+
+public Consumer<Flux<OrderDispatchedMessage>> dispatchOrder( OrderService orderService
+){ return flux -> orderService.consumeOrderDispatchedEvent(flux)
+
+For each dispatched message, it updates the related order in the database.
+
+.doOnNext(order -> log.info("The order with id {} is dispatched",
+
+order.id()))
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+357
+
+.subscribe(); } }
+
+Subscribes to the reactive stream in order to activate it. Without a subscriber, no data flows through the stream.
+
+Order Service is a reactive application, so the dispatchOrder function will consume messages as a reactive stream (a Flux of OrderDispatchedMessage). Reactive streams are activated only if there's a subscriber interested in receiving the data. For that reason, it's critical that we end the reactive stream by subscribing to it, or else no data will ever be processed. In previous examples, the subscription part was handled transparently by the framework (for example, when using reactive streams to return data via a REST endpoint or to send data to a backing service). In this case, we have to explicitly do that with the subscribe() clause.
+Next, let's implement the consumeOrderDispatchedMessageEvent() method in the OrderService class to update the status in the database for an existing order after it's dispatched.
+
+Listing 10.20 Implementing the logic for updating an order as dispatched
+
+Accepts a reactive stream of OrderDispatchedMessage objects as input
+
+@Service public class OrderService {
+...
+public Flux<Order> consumeOrderDispatchedEvent(
+
+For each object emitted to the stream, it reads the related order from the database.
+
+Flux<OrderDispatchedMessage> flux ){
+return flux .flatMap(message -> orderRepository.findById(message.orderId()))
+
+Updates the order with the "dispatched" status
+
+.map(this::buildDispatchedOrder)
+
+.flatMap(orderRepository::save); }
+
+Saves the updated order in the database
+
+private Order buildDispatchedOrder(Order existingOrder) {
+
+return new Order( existingOrder.id(), existingOrder.bookIsbn(), existingOrder.bookName(),
+
+Given an order, it returns a new record with the "dispatched" status.
+
+existingOrder.bookPrice(),
+
+existingOrder.quantity(),
+
+OrderStatus.DISPATCHED,
+
+existingOrder.createdDate(),
+
+existingOrder.lastModifiedDate(),
+
+existingOrder.version()
+
+);
+
+}
+
+}
+
+Consumers are triggered by a message arriving in the queue. RabbitMQ provides an at-least-one delivered guarantee, so you need to be aware of possible duplicates. The
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+358
+
+CHAPTER 10 Event-driven applications and functions
+
+code we implemented updates the status of the specific order to be DISPATCHED, an operation that can be executed several times with the same result. Since the operation is idempotent, the code is resilient to duplicates. A further optimization would be to check for the status and skip the update operation if it's already dispatched.
+Finally, we need to configure Spring Cloud Stream in the application.yml file so that the dispatchOrder-in-0 binding (inferred from the dispatchOrder function name) is mapped to the order-dispatched exchange in RabbitMQ. Also, remember to define dispatchOrder as the function that Spring Cloud Function should manage, and the integration with RabbitMQ.
+
+Listing 10.21 Configuring Cloud Stream bindings and RabbitMQ integration
+
+spring: cloud: function: definition: dispatchOrder
+
+Definition of the function managed by Spring Cloud Function
+
+The input binding
+
+stream: bindings: dispatchOrder-in-0: destination: order-dispatched
+
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+group: {spring.application.name}
+
+rabbitmq: host: localhost port: 5672 username: user
+
+Configures the integrations with RabbitMQ
+
+password: password
+
+The consumer group interested in the destination (the same as the application name)
+
+connection-timeout: 5s
+
+As you can see, it works the same way as the functions in Dispatcher Service. The consumers in Order Service will be part of the order-service consumer group, and Spring Cloud Stream will define a message channel between them and an order-dispatched .order-service queue in RabbitMQ.
+Next, we'll complete the order flow by defining a supplier responsible for triggering the whole procedure.
+
+10.5.2 Implementing event producers, and the problem of atomicity
+Suppliers are message sources. They produce messages when an event happens. In Order Service, a supplier should notify the interested parties (in this case, Dispatcher Service) whenever an order has been accepted. Unlike functions and consumers, suppliers need to be activated. They act only upon invocation.
+Spring Cloud Stream provides a few ways to define suppliers and cover different scenarios. In our case, the event source is not a message broker, but a REST endpoint. When a user sends a POST request to Order Service for purchasing a book, we want to publish an event signaling whether the order has been accepted.
+Let's start by modeling that event as a DTO. It will be the same as the OrderAcceptedMessage record we used in Dispatcher Service. Add the record to the com.polarbookshop.orderservice.order.event package in your Order Service project (order-service).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+359
+
+Listing 10.22 A DTO representing the event about orders being accepted
+package com.polarbookshop.orderservice.order.event;
+
+public record OrderAcceptedMessage ( Long orderId
+){}
+
+We can bridge the REST layer with the stream part of the application using a StreamBridge object that allows us to send data to a specific destination imperatively. Let's break this new functionality down. First, we can implement a method that accepts an Order object as input, verifies it's accepted, builds an OrderAcceptedMessage object, and sends it to a RabbitMQ destination using StreamBridge.
+Open the OrderService class, autowire a StreamBridge object, and define a new publishOrderAcceptedEvent method.
+
+Listing 10.23 Implementing the logic for publishing events to a destination
+package com.polarbookshop.orderservice.order.domain;
+import com.polarbookshop.orderservice.book.BookClient; import com.polarbookshop.orderservice.order.event.OrderAcceptedMessage; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import org.springframework.cloud.stream.function.StreamBridge; import org.springframework.stereotype.Service; ...
+
+@Service public class OrderService {
+private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+private final BookClient bookClient; private final OrderRepository orderRepository; private final StreamBridge streamBridge;
+
+public OrderService(BookClient bookClient, StreamBridge streamBridge, OrderRepository orderRepository
+){ this.bookClient = bookClient; this.orderRepository = orderRepository; this.streamBridge = streamBridge;
+}
+
+...
+
+If the order is not accepted, it does nothing.
+
+private void publishOrderAcceptedEvent(Order order) {
+
+if (!order.status().equals(OrderStatus.ACCEPTED)) {
+
+return; } var orderAcceptedMessage =
+new OrderAcceptedMessage(order.id());
+
+Builds a message to notify that an order has been accepted
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+360
+
+CHAPTER 10 Event-driven applications and functions
+
+log.info("Sending order accepted event with id: {}", order.id());
+
+var result = streamBridge.send("acceptOrder-out-0",
+
+orderAcceptedMessage);
+
+log.info("Result of sending data for order with id {}: {}",
+
+order.id(), result); } }
+
+Explicitly sends a message to the acceptOrder-out-0 binding
+
+Since the data source is a REST endpoint, there is no Supplier bean we can register with Spring Cloud Function, and therefore there is no trigger for the framework to create the necessary bindings with RabbitMQ. Yet, in listing 10.23, StreamBridge is used to send data to an acceptOrder-out-0 binding. Where does it come from? There is no acceptOrder function!
+At startup time, Spring Cloud Stream will notice that StreamBridge wants to publish messages via an acceptOrder-out-0 binding, and it will create one automatically. Similar to the bindings created from functions, we can configure the destination name in RabbitMQ. Open the application.yml file and configure the binding as follows.
+
+Listing 10.24 Configuring Cloud Stream output binding
+
+spring: cloud: function: definition: dispatchOrder stream: bindings: dispatchOrder-in-0: destination: order-dispatched group: ${spring.application.name} acceptOrder-out-0: destination: order-accepted
+
+Output binding created and managed by StreamBridge
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+All that's left now is calling the method whenever a submitted order is accepted. That's a critical point and one of the aspects characterizing the saga pattern, a popular alternative to distributed transactions in microservice architectures. To ensure consistency in your system, persisting an order in the database and sending a message about it must be done atomically. Either both operations succeed, or they both must fail. A simple yet effective way to ensure atomicity is by wrapping the two operations in a local transaction. To do that, we can rely on the built-in Spring transaction management functionality.
+NOTE The saga pattern is described extensively in chapter 4 of Chris Richardson's book, Microservices Patterns (Manning, 2018; https://livebook.manning.com/ book/microservices-patterns/chapter-4). I recommend you check it out if you're interested in designing business transactions that span multiple applications.
+In the OrderService class, modify the submitOrder() method to call the publishOrderAcceptedEvent method, and annotate it with @Transactional.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+361
+
+Listing 10.25 Defining a saga transaction with database and event broker
+
+@Service
+
+public class OrderService {
+
+... @Transactional
+
+Executes the method in a local transaction
+
+public Mono<Order> submitOrder(String isbn, int quantity) {
+
+return bookClient.getBookByIsbn(isbn)
+
+.map(book -> buildAcceptedOrder(book, quantity)) .defaultIfEmpty(buildRejectedOrder(isbn, quantity)) .flatMap(orderRepository::save)
+
+Saves the order in the database
+
+.doOnNext(this::publishOrderAcceptedEvent); }
+private void publishOrderAcceptedEvent(Order order) {
+
+Publishes an event if the order is accepted
+
+if (!order.status().equals(OrderStatus.ACCEPTED)) {
+
+return;
+
+}
+
+var orderAcceptedMessage = new OrderAcceptedMessage(order.id());
+
+log.info("Sending order accepted event with id: {}", order.id());
+
+var result = streamBridge.send("acceptOrder-out-0",
+
+orderAcceptedMessage);
+
+log.info("Result of sending data for order with id {}: {}",
+
+order.id(), result);
+
+}
+
+}
+
+Spring Boot comes preconfigured with transaction management functionality and can handle transactional operations involving relational databases (as you learned in chapter 5). However, the channel established with RabbitMQ for the message producer is not transactional by default. To make the event-publishing operation join the existing transaction, we need to enable RabbitMQ's transactional support for the message producer in the application.yml file.
+
+Listing 10.26 Configuring the output binding to be transactional
+
+spring:
+
+cloud:
+
+function:
+
+definition: dispatchOrder
+
+stream:
+
+bindings:
+
+dispatchOrder-in-0:
+
+destination: order-dispatched
+
+group: ${spring.application.name} acceptOrder-out-0:
+destination: order-accepted rabbit:
+
+RabbitMQ-specific configuration for the Spring Cloud Stream bindings
+
+bindings: acceptOrder-out-0: producer: transacted: true
+
+Makes the acceptOrder-out-0 binding transactional
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+362
+
+CHAPTER 10 Event-driven applications and functions
+
+Now you can write new integration tests for the supplier and the consumer, like we did for the functions in Dispatcher Service. I'll leave the autotests to you, since you have the necessary tools now. If you need inspiration, check out the source code accompanying this book (Chapter10/10-end/order-service).
+You will also need to import the configuration for the test binder (@Import(TestChannelBinderConfiguration.class)) in the existing OrderServiceApplicationTests class to make it work.
+We've had a nice journey through event-driven models, functions, and messaging systems. Before wrapping up, let's look at the order flow in action. First, start RabbitMQ, PostgreSQL (docker-compose up -d polar-rabbitmq polar-postgres), and Dispatcher Service (./gradlew bootRun). Then run Catalog Service and Order Service (./gradlew bootRun or from Docker Compose after building the images first).
+Once all those services are up and running, add a new book to the catalog:
+$ http POST :9001/books author="Jon Snow" \ title="All I don't know about the Arctic" isbn="1234567897" \ price=9.90 publisher="Polarsophia"
+
+Then order three copies of that book:
+$ http POST :9002/orders isbn=1234567897 quantity=3
+If you order a book that exists, the order will be accepted, and Order Service will publish an OrderAcceptedEvent message. Dispatcher Service, subscribed to that same event, will process the order and publish an OrderDispatchedEvent message. Order Service will be notified and update the order status in the database.
+TIP You can follow the message flow by checking the application logs from Order Service and Dispatcher Service.
+Now the moment of the truth. Fetch the order from Order Service:
+$ http :9002/orders
+The status should be DISPATCHED:
+{ "bookIsbn": "1234567897", "bookName": "All I don't know about the Arctic - Jon Snow", "bookPrice": 9.9, "createdDate": "2022-06-06T19:40:33.426610Z", "id": 1, "lastModifiedDate": "2022-06-06T19:40:33.866588Z", "quantity": 3, "status": "DISPATCHED", "version": 2
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+363
+
+And it is. Great job! When you're done testing the system, stop all the applications (Ctrl-C) and Docker containers (docker-compose down).
+That concludes the main implementation of the business logic for the Polar Bookshop system. The next chapter will cover security for cloud native applications using Spring Security, OAuth 2.1, and OpenID Connect.
+
+Polar Labs
+Feel free to apply what you've learned in the previous chapters and prepare the Dispatcher Service application for deployment.
+1 Add Spring Cloud Config Client to Dispatcher Service to make it fetch configuration data from Config Service.
+2 Configure the Cloud Native Buildpacks integration, containerize the application, and define the commit stage of the deployment pipeline.
+3 Write the Deployment and Service manifests for deploying Dispatcher Service to a Kubernetes cluster.
+4 Configure Tilt to automate the Dispatcher Service's deployment to your local Kubernetes cluster initialized with minikube.
+Then update the Docker Compose specification and the Kubernetes manifests to configure the RabbitMQ integration for Order Service.
+You can refer to the Chapter10/10-end folder in the code repository accompanying the book to check on the final result (https://github.com/ThomasVitale/cloud-nativespring-in-action). Deploy the backing services from the manifests, available in the Chapter10/10-end/polar-deployment/kubernetes/platform/development folder, with kubectl apply -f services.
+
+Summary
+ Event-driven architectures are distributed systems that interact with each other by producing and consuming events.
+ An event is something relevant that happened in a system.  In the pub/sub model, producers publish events, which are sent to all subscrib-
+ers to be consumed.  Event processing platforms like RabbitMQ and Kafka are responsible for col-
+lecting events from the producers, routing, and distributing them to the interested consumers.  In the AMQP protocol, producers send messages to an exchange in a broker that forwards them to queues according to specific routing algorithms.  In the AMQP protocol, consumers receive messages from the queues in the broker.  In the AMQP protocol, messages are data structures composed of key/value attributes and a binary payload.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+364
+
+CHAPTER 10 Event-driven applications and functions
+
+ RabbitMQ is a message broker based on the AMQP protocol that you can use to implement event-driven architectures based on the pub/sub model.
+ RabbitMQ provides high availability, resilience, and data replication.  Spring Cloud Function enables you to implement your business logic using the
+standard Java Function, Supplier, and Consumer interfaces.  Spring Cloud Function wraps your function and provides several exciting fea-
+tures like transparent type conversion and function composition.  Functions implemented in the context of Spring Cloud Function can be exposed
+and integrated with external systems in different ways.  Functions can be exposed as REST endpoints, packaged, and deployed in a
+FaaS platform as serverless applications (Knative, AWS Lambda, Azure Function, Google Cloud Functions), or they can be bound to message channels.  Spring Cloud Stream, built on top of Spring Cloud Function, provides you with all the necessary plumbing to integrate your functions with external messaging systems like RabbitMQ or Kafka.  Once you implement your functions, you don't have to make any changes to your code. You only need to add a dependency on Spring Cloud Stream and configure it to adapt to your needs.  In Spring Cloud Stream, destination binders provide integration with external messaging systems.  In Spring Cloud Stream, destination bindings (input and output) bridge the producers and consumers in your applications with exchanges and queues in a message broker like RabbitMQ.  Functions and consumers are activated automatically when new messages arrive.  Suppliers need to be explicitly activated, such as by explicitly sending a message to a destination binding.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Security: Authentication and SPA
+This chapter covers
+ Understanding the Spring Security fundamentals  Managing user accounts with Keycloak  Working with OpenID Connect, JWT, and Keycloak  Authenticating users with Spring Security and
+OpenID Connect  Testing Spring Security and OpenID Connect
+Security is one of the most critical aspects of web applications and probably the one with the most catastrophic effects when done wrong. For educational purposes, I'm introducing this topic only now. In a real-world scenario, I recommend considering security from the beginning of each new project or feature and never letting it go until the application is retired.
+Access control systems allow users access to resources only when their identity has been proven and they have the required permissions. To accomplish that, we need to follow three pivotal steps: identification, authentication, and authorization.
+1 Identification happens when a user (human or machine) claims an identity. In the physical world, that's when I introduce myself by stating my name. In the digital world, I would do that by providing my username or email address.
+365
+Licensed to Zhigang Li <lzg14@qq.com>
+
+366
+
+CHAPTER 11 Security: Authentication and SPA
+
+2 Authentication is about verifying the user's claimed identity through factors like a passport, a driver's license, a password, a certificate, or a token. When multiple factors are used to verify the user's identity, we talk about multi-factor authentication.
+3 Authorization always happens after authentication, and it checks what the user is allowed to do in a given context.
+This chapter and the next one will cover implementing access control systems in cloud native applications. You'll see how to add authentication to a system like Polar Bookshop and use a dedicated identity and access management solution like Keycloak. I'll show you how to use Spring Security to secure applications and adopt standards like JWT, OAuth2, and OpenID Connect. In the process, you'll also add an Angular frontend to the system and learn the best practices for security when a singlepage application (SPA) is involved.
+NOTE The source code for the examples in this chapter is available in the Chapter11/11-begin and Chapter11/11-end folders, which contain the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+
+11.1
+
+Understanding the Spring Security fundamentals
+Spring Security (https://spring.io/projects/spring-security) is the de facto standard for securing Spring applications, supporting imperative and reactive stacks. It provides authentication and authorization features as well as protection against the most common attacks.
+The framework provides its main functionality by relying on filters. Let's consider a possible requirement for adding authentication to a Spring Boot application. Users should be able to authenticate with their username and password through a login form. When we configure Spring Security to enable such a feature, the framework adds a filter that intercepts any incoming HTTP request. If the user is already authenticated, it sends the request through to be processed by a given web handler, such as a @RestController class. If the user is not authenticated, it forwards the user to a login page and prompts for their username and password.
+
+NOTE In imperative Spring applications, a filter is implemented as a Servlet Filter class. In reactive applications, the WebFilter class is used.
+
+Most Spring Security features, when enabled, are handled via filters. The framework establishes a chain of filters that are executed according to a well-defined and sensible order. For instance, the filter that handles authentication runs before the one that checks for authorization because we can't verify a user's authority before knowing who it is.
+Let's start with a basic example to better understand how Spring Security works. We want to add authentication to the Polar Bookshop system. Since Edge Service is
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.1 Understanding the Spring Security fundamentals
+
+367
+
+the entry point, it makes sense to handle cross-cutting concerns like security there. Users should be able to authenticate with a username and password via a login form.
+First, add a new dependency on Spring Security in the build.gradle file for the Edge Service project (edge-service). Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 11.1 Adding dependency for Spring Security in Edge Service
+dependencies { ... implementation 'org.springframework.boot:spring-boot-starter-security'
+}
+
+The central place for defining and configuring security policies in Spring Security is a SecurityWebFilterChain bean. That object tells the framework which filters should be enabled. You can build a SecurityWebFilterChain bean through the DSL provided by ServerHttpSecurity.
+For now, we want to comply with the following requirements:
+
+ All endpoints exposed by Edge Service must require user authentication.  The authentication must happen via a login form page.
+
+To collect all the configurations related to security, create a SecurityWebFilterChain
+
+bean in a new SecurityConfig class (com.polarbookshop.edgeservice.config
+
+package):
+
+@Bean
+
+The SecurityWebFilterChain bean is used to define and configure security policies for the application.
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http
+
+) {}
+
+The ServerHttpSecurity object, autowired by Spring, provides a convenient DSL for configuring Spring Security and building a SecurityWebFilterChain bean. With authorizeExchange(), you can define access policies for any request (called an exchange in reactive Spring). In this case, we want all requests to require authentication (authenticated()):
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+
+return http
+
+.authorizeExchange(exchange ->
+
+exchange.anyExchange().authenticated()) .build(); }
+
+All requests require authentication.
+
+Spring Security provides several authentication strategies, including HTTP Basic, login form, SAML, and OpenID Connect. For this example, we want to use the login
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+
