@@ -12,6 +12,6 @@
 
 与重试不同，当断路器跳闸时，不再允许对下游服务的调用。与重试类似，断路器的行为取决于阈值和超时，它允许你定义要调用的回退方法。弹性的目标是使系统对用户可用，即使面对故障。在最坏的情况下，比如断路器跳闸时，你应该保证优雅降级。你可以为回退方法采用不同的策略。例如，你可能决定返回默认值或缓存中的最后一个可用值，以防 GET 请求。
 
-Spring Cloud Circuit Breaker 项目提供了在 Spring 应用中定义断路器的抽象。你可以选择基于 Resilience4J（https://resilience4j.readme.io）的响应式和非响应式实现。Netflix Hystrix 曾是微服务架构的流行选择，但它在 2018 年进入了维护模式。之后，Resilience4J 成为首选，因为它提供了 Hystrix 提供的所有功能以及更多功能。
+Spring Cloud Circuit Breaker 项目提供了在 Spring 应用中定义断路器的抽象。你可以选择基于 Resilience4J（[https://resilience4j.readme.io](https://resilience4j.readme.io)）的响应式和非响应式实现。Netflix Hystrix 曾是微服务架构的流行选择，但它在 2018 年进入了维护模式。之后，Resilience4J 成为首选，因为它提供了 Hystrix 提供的所有功能以及更多功能。
 
 Spring Cloud Gateway 与 Spring Cloud Circuit Breaker 原生集成，为你提供了一个 CircuitBreaker 网关过滤器，可用于保护与所有下游服务的交互。在以下几节中，你将为从 Edge Service 到 Catalog Service 和 Order Service 的路由配置断路器。

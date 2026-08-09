@@ -20,4 +20,4 @@
 
 本章和下一章将介绍在云原生应用程序中实现访问控制系统。您将了解如何向 Polar Bookshop 等系统添加身份验证，以及如何使用 Keycloak 等专用身份和访问管理解决方案。我将向您展示如何使用 Spring Security 来保护应用程序的安全，并采用 JWT、OAuth2 和 OpenID Connect 等标准。在此过程中，您还将向系统添加 Angular 前端，并了解涉及单页应用程序（SPA）时的安全最佳实践。
 
-> **注意** 本章示例的源代码可在 Chapter11/11-begin 和 Chapter11/11-end 文件夹中找到，分别包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意** 本章示例的源代码可在 Chapter11/11-begin 和 Chapter11/11-end 文件夹中找到，分别包含项目的初始和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

@@ -19,4 +19,4 @@
 
 本章将带您了解 Kubernetes 的主要功能，并教您如何为 Spring Boot 应用程序创建和管理 Pod、Deployment 和 Service。在此过程中，您将为应用程序启用优雅关闭，学习如何扩展它们，以及如何使用 Kubernetes 提供的服务发现和负载均衡功能。您还将学习使用 Tilt 自动化本地开发工作流，使用 Octant 可视化工作负载，以及验证 Kubernetes 清单。
 
-> 注意：本章示例的源代码可在 Chapter07/07-begin 和 Chapter07/07-end 文件夹中找到，其中包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码可在 Chapter07/07-begin 和 Chapter07/07-end 文件夹中找到，其中包含项目的初始和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

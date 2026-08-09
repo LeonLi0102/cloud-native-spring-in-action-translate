@@ -13,4 +13,4 @@
 
 本章将介绍云原生系统的数据库以及在云中持久化数据的主要方面。我们将依赖 Docker 在本地环境中运行 PostgreSQL，但在生产环境中，我们将用云平台提供的托管服务来替换它。然后，我们将使用 Spring Data JDBC 为 Catalog Service 添加数据持久化层。最后，我将介绍使用 Flyway 在生产环境中管理和演进数据库的一些常见问题。
 
-> 注意：本章示例的源代码可在 GitHub 上的 Chapter05/05-begin、Chapter05/05-intermediate 和 Chapter05/05-end 文件夹中找到，包含项目的初始、中间和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码可在 GitHub 上的 Chapter05/05-begin、Chapter05/05-intermediate 和 Chapter05/05-end 文件夹中找到，包含项目的初始、中间和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

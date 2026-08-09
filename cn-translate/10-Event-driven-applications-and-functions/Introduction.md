@@ -22,4 +22,4 @@
 
 事件驱动架构描述了通过产生和消费事件进行交互的分布式系统。交互是异步的，解决了时间耦合的问题。本章将介绍事件驱动架构和事件代理的基础知识。然后，您将学习如何使用函数式编程范式和 Spring Cloud Function 实现业务逻辑。最后，您将使用 Spring Cloud Stream 通过 RabbitMQ 将函数暴露为消息通道，通过发布/订阅（pub/sub）模型构建事件驱动应用程序。
 
-> **注意** 本章示例的源代码可在 Chapter10/10-begin、Chapter10/10-intermediate 和 Chapter10/10-end 文件夹中找到，分别包含项目的初始、中间和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意** 本章示例的源代码可在 Chapter10/10-begin、Chapter10/10-intermediate 和 Chapter10/10-end 文件夹中找到，分别包含项目的初始、中间和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

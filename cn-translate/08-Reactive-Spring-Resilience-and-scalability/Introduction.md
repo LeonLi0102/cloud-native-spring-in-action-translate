@@ -26,4 +26,4 @@ Polarsophia——Polar Bookshop 背后的组织——对其新软件产品的进
 
 Order Service 将与 Catalog Service 交互以检查图书的可用性和详细信息，因此您将看到如何使用 Spring WebClient 实现响应式 REST 客户端。两个服务之间的集成点是需要额外关注的区域，以实现稳健性和容错性。依托 Reactor 项目，您将采用重试、超时和降级等稳定性模式。最后，您将编写自动化测试，使用 Spring Boot 和 Testcontainers 验证响应式应用的行为。
 
-> **NOTE** 本章的示例源代码可在 Chapter08/08-begin 和 Chapter08/08-end 文件夹中找到，包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **NOTE** 本章的示例源代码可在 Chapter08/08-begin 和 Chapter08/08-end 文件夹中找到，包含项目的初始和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

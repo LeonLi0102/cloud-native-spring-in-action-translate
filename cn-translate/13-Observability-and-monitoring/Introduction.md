@@ -16,4 +16,4 @@
 
 Spring Boot Actuator 提供了生产就绪的功能来监控和管理应用程序。Micrometer 是一个指标收集库，可以与 Prometheus、Grafana 等系统集成。
 
-> 注意：本章示例的源代码在 Chapter13/13-begin 和 Chapter13/13-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码在 Chapter13/13-begin 和 Chapter13/13-end 文件夹中（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

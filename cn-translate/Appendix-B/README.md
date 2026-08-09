@@ -12,13 +12,13 @@ Kubernetes 是部署和管理容器化工作负载的事实标准。在整本书
 
 所有主要的云提供商都提供托管 Kubernetes 服务。在本附录中，您将了解如何使用 DigitalOcean 启动 Kubernetes 集群。我们还将依赖平台提供的其他托管服务，包括 PostgreSQL 和 Redis。最后，本附录将指导您直接在 Kubernetes 中部署 RabbitMQ 和 Keycloak。
 
-在继续之前，您需要确保拥有 DigitalOcean 帐户。注册时，DigitalOcean 提供 60 天免费试用，赠送 100 美元积分，这足以完成第 15 章中的示例。请按照官方网站上的说明创建帐户并开始免费试用（https://try.digitalocean.com/freetrialoffer）。
+在继续之前，您需要确保拥有 DigitalOcean 帐户。注册时，DigitalOcean 提供 60 天免费试用，赠送 100 美元积分，这足以完成第 15 章中的示例。请按照官方网站上的说明创建帐户并开始免费试用（[https://try.digitalocean.com/freetrialoffer](https://try.digitalocean.com/freetrialoffer)）。
 
 > **注意** 本书附带的源代码仓库包含在几个不同云平台上设置 Kubernetes 集群的其他说明，以防您想使用 DigitalOcean 以外的平台。
 
-与 DigitalOcean 平台交互有两种主要选项。第一种是通过 Web 门户（https://cloud.digitalocean.com），这对于探索可用服务及其功能非常方便。第二个选项是通过 doctl，即 DigitalOcean CLI。这就是我们将在以下部分中使用的工具。
+与 DigitalOcean 平台交互有两种主要选项。第一种是通过 Web 门户（[https://cloud.digitalocean.com](https://cloud.digitalocean.com)），这对于探索可用服务及其功能非常方便。第二个选项是通过 doctl，即 DigitalOcean CLI。这就是我们将在以下部分中使用的工具。
 
-您可以在官方网站上找到安装 doctl 的说明（https://docs.digitalocean.com/reference/doctl/how-to/install）。如果您使用的是 macOS 或 Linux，可以使用 Homebrew 轻松安装：
+您可以在官方网站上找到安装 doctl 的说明（[https://docs.digitalocean.com/reference/doctl/how-to/install](https://docs.digitalocean.com/reference/doctl/how-to/install)）。如果您使用的是 macOS 或 Linux，可以使用 Homebrew 轻松安装：
 
 ```bash
 $ brew install doctl
@@ -26,11 +26,11 @@ $ brew install doctl
 
 您可以按照同一 doctl 页面上的后续说明生成 API 令牌并授予 doctl 访问您的 DigitalOcean 帐户的权限。
 
-> **注意** 在真实的生产场景中，您将使用 Terraform 或 Crossplane 等工具自动化平台管理任务。这通常是平台团队的责任，而不是应用程序开发人员的责任，因此我不会通过引入另一个工具来增加额外的复杂性。相反，我们将直接使用 DigitalOcean CLI。如果您对 Terraform 感兴趣，Manning 的目录中有一本关于该主题的书：Scott Winkler 的《Terraform in Action》（Manning，2021；https://www.manning.com/books/terraform-in-action）。对于 Crossplane，我建议阅读 Mauricio Salatino 的《Continuous Delivery for Kubernetes》第 4 章（https://livebook.manning.com/book/continuous-delivery-for-kubernetes/chapter-4）。
+> **注意** 在真实的生产场景中，您将使用 Terraform 或 Crossplane 等工具自动化平台管理任务。这通常是平台团队的责任，而不是应用程序开发人员的责任，因此我不会通过引入另一个工具来增加额外的复杂性。相反，我们将直接使用 DigitalOcean CLI。如果您对 Terraform 感兴趣，Manning 的目录中有一本关于该主题的书：Scott Winkler 的《Terraform in Action》（Manning，2021；[https://www.manning.com/books/terraform-in-action](https://www.manning.com/books/terraform-in-action)）。对于 Crossplane，我建议阅读 Mauricio Salatino 的《Continuous Delivery for Kubernetes》第 4 章（[https://livebook.manning.com/book/continuous-delivery-for-kubernetes/chapter-4](https://livebook.manning.com/book/continuous-delivery-for-kubernetes/chapter-4)）。
 
 ## B.1 在 DigitalOcean 上运行 Kubernetes 集群
 
-我们需要在 DigitalOcean 上创建的第一个资源是 Kubernetes 集群。您可以依赖平台提供的 IaaS 功能，并在虚拟机上手动安装 Kubernetes 集群。相反，我们将向上移动抽象阶梯，选择由平台管理的解决方案。当我们使用 DigitalOcean Kubernetes（https://docs.digitalocean.com/products/kubernetes）时，平台将处理许多基础设施问题，以便我们开发人员可以更专注于应用程序开发。
+我们需要在 DigitalOcean 上创建的第一个资源是 Kubernetes 集群。您可以依赖平台提供的 IaaS 功能，并在虚拟机上手动安装 Kubernetes 集群。相反，我们将向上移动抽象阶梯，选择由平台管理的解决方案。当我们使用 DigitalOcean Kubernetes（[https://docs.digitalocean.com/products/kubernetes](https://docs.digitalocean.com/products/kubernetes)）时，平台将处理许多基础设施问题，以便我们开发人员可以更专注于应用程序开发。
 
 您可以使用 doctl 轻松创建新的 Kubernetes 集群。我承诺我们将在真实的生产环境中部署 Polar Bookshop，这就是我们将要做的，尽管我不会要求您像在真实场景中那样调整和配置集群。
 
@@ -110,7 +110,7 @@ $ ./deploy.sh
 
 ## B.2 在 DigitalOcean 上运行 PostgreSQL 数据库
 
-在本书的大部分内容中，您一直以容器形式运行 PostgreSQL 数据库实例，无论是在 Docker 中还是在本地 Kubernetes 集群中。在生产环境中，我们希望利用平台并使用 DigitalOcean 提供的托管 PostgreSQL 服务（https://docs.digitalocean.com/products/databases/postgresql）。
+在本书的大部分内容中，您一直以容器形式运行 PostgreSQL 数据库实例，无论是在 Docker 中还是在本地 Kubernetes 集群中。在生产环境中，我们希望利用平台并使用 DigitalOcean 提供的托管 PostgreSQL 服务（[https://docs.digitalocean.com/products/databases/postgresql](https://docs.digitalocean.com/products/databases/postgresql)）。
 
 我们在整本书中开发的应用程序是云原生的，遵循 15-Factor 方法论。因此，它们将备份服务视为附加资源，可以在不更改应用程序代码的情况下进行交换。此外，我们遵循环境一致性原则，在开发和测试中使用真实的 PostgreSQL 数据库，这也是我们想要在生产中使用的相同数据库。
 
@@ -183,7 +183,7 @@ PostgreSQL 就到这里。在下一节中，您将了解如何使用 DigitalOcea
 
 ## B.3 在 DigitalOcean 上运行 Redis
 
-在本书的大部分内容中，您一直以容器形式运行 Redis 实例，无论是在 Docker 中还是在本地 Kubernetes 集群中。在生产环境中，我们希望利用平台并使用 DigitalOcean 提供的托管 Redis 服务（https://docs.digitalocean.com/products/databases/redis/）。
+在本书的大部分内容中，您一直以容器形式运行 Redis 实例，无论是在 Docker 中还是在本地 Kubernetes 集群中。在生产环境中，我们希望利用平台并使用 DigitalOcean 提供的托管 Redis 服务（[https://docs.digitalocean.com/products/databases/redis/](https://docs.digitalocean.com/products/databases/redis/)）。
 
 同样，由于我们遵循 15-Factor 方法论，我们可以在不更改应用程序代码的情况下更换 Edge Service 使用的 Redis 备份服务。我们只需要更改 Spring Boot 的一些配置属性。
 
@@ -239,11 +239,11 @@ Redis 就到这里。下一节将介绍如何使用 Kubernetes Operator 部署 R
 
 在前面的部分中，我们初始化并配置了平台提供和管理的 PostgreSQL 和 Redis 服务器。我们无法对 RabbitMQ 执行相同的操作，因为 DigitalOcean 没有 RabbitMQ 产品，类似于 Azure 或 GCP 等其他云提供商。
 
-在 Kubernetes 集群中部署和管理 RabbitMQ 等服务的一种流行且方便的方法是使用 Operator 模式。Operator 是"Kubernetes 的软件扩展，利用自定义资源来管理应用程序及其组件"（https://kubernetes.io/docs/concepts/extend-kubernetes/operator）。
+在 Kubernetes 集群中部署和管理 RabbitMQ 等服务的一种流行且方便的方法是使用 Operator 模式。Operator 是"Kubernetes 的软件扩展，利用自定义资源来管理应用程序及其组件"（[https://kubernetes.io/docs/concepts/extend-kubernetes/operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator)）。
 
 考虑一下 RabbitMQ。要在生产中使用它，您需要将其配置为高可用性和弹性。根据工作负载，您可能希望动态扩展它。当软件的新版本可用时，您需要一种可靠的方法来升级服务并迁移现有构建和数据。您可以手动执行所有这些任务。或者，您可以使用 Operator 来捕获所有这些操作需求，并指示 Kubernetes 自动处理它们。实际上，Operator 是一个在 Kubernetes 上运行并与之交互以完成其功能的应用程序。
 
-RabbitMQ 项目提供了一个官方 Operator 来在 Kubernetes 集群上运行事件代理（www.rabbitmq.com）。我已经配置了使用 RabbitMQ Kubernetes Operator 所需的所有必要资源，并准备了一个脚本来部署它。
+RabbitMQ 项目提供了一个官方 Operator 来在 Kubernetes 集群上运行事件代理（[www.rabbitmq.com](http://www.rabbitmq.com)）。我已经配置了使用 RabbitMQ Kubernetes Operator 所需的所有必要资源，并准备了一个脚本来部署它。
 
 打开终端窗口，转到您的 Polar Deployment 项目（polar-deployment），导航到 `kubernetes/platform/production/rabbitmq` 文件夹。在配置 Kubernetes 集群时，您应该已将该文件夹复制到您的仓库中。如果没有，请现在从本书附带的源代码仓库中复制（Chapter15/15-end/polar-deployment/platform/production/rabbitmq）。
 
@@ -273,13 +273,13 @@ RabbitMQ 就到这里。在下一节中，您将了解如何将 Keycloak 服务�
 
 将 Helm 视为包管理器。要在计算机上安装软件，您将使用操作系统包管理器之一，例如 apt（Ubuntu）、Homebrew（macOS）或 Chocolatey（Windows）。在 Kubernetes 中，您可以类似地使用 Helm，但它们被称为 chart 而不是包。
 
-继续在您的计算机上安装 Helm。您可以在官方网站上找到说明（https://helm.sh）。如果您使用的是 macOS 或 Linux，可以使用 Homebrew 安装 Helm：
+继续在您的计算机上安装 Helm。您可以在官方网站上找到说明（[https://helm.sh](https://helm.sh)）。如果您使用的是 macOS 或 Linux，可以使用 Homebrew 安装 Helm：
 
 ```bash
 $ brew install helm
 ```
 
-我已经配置了使用 Bitnami（https://bitnami.com）提供的 Keycloak Helm chart 所需的所有必要资源，并准备了一个脚本来部署它。
+我已经配置了使用 Bitnami（[https://bitnami.com](https://bitnami.com)）提供的 Keycloak Helm chart 所需的所有必要资源，并准备了一个脚本来部署它。
 
 打开终端窗口，转到您的 Polar Deployment 项目（polar-deployment），导航到 `kubernetes/platform/production/keycloak` 文件夹。在配置 Kubernetes 集群时，您应该已将该文件夹复制到您的仓库中。如果没有，请现在从本书附带的源代码仓库中复制（Chapter15/15-end/polar-deployment/platform/production/keycloak）。
 
@@ -301,7 +301,7 @@ $ ./deploy.sh
 $ kubectl get secrets polar-keycloak-client-credentials
 ```
 
-> **注意** Keycloak Helm chart 在集群内启动一个 PostgreSQL 实例，并使用它来持久化 Keycloak 使用的数据。我们可以将其与 DigitalOcean 管理的 PostgreSQL 服务集成，但 Keycloak 端的配置会相当复杂。如果您想使用外部 PostgreSQL 数据库，可以参考 Keycloak Helm chart 文档（https://bitnami.com/stack/keycloak/helm）。
+> **注意** Keycloak Helm chart 在集群内启动一个 PostgreSQL 实例，并使用它来持久化 Keycloak 使用的数据。我们可以将其与 DigitalOcean 管理的 PostgreSQL 服务集成，但 Keycloak 端的配置会相当复杂。如果您想使用外部 PostgreSQL 数据库，可以参考 Keycloak Helm chart 文档（[https://bitnami.com/stack/keycloak/helm](https://bitnami.com/stack/keycloak/helm)）。
 
 Keycloak 服务器部署在专用的 `keycloak-system` 命名空间中。应用程序可以在集群内通过 `polar-keycloak.keycloak-system.svc.cluster.local` 端口 8080 与其交互。它还通过公共 IP 地址暴露在集群外部。您可以通过以下命令找到外部 IP 地址：
 
@@ -365,4 +365,4 @@ $ doctl databases delete <polar-db-id>
 $ doctl databases delete <redis-db-id>
 ```
 
-最后，打开浏览器窗口，导航到 DigitalOcean Web 界面（https://cloud.digitalocean.com），并浏览帐户中的不同云资源类别，以验证没有未完成的服务。如果有，请删除它们。可能是作为创建集群或数据库的副作用而创建的负载均衡器或持久卷，这些可能未被前面的命令删除。
+最后，打开浏览器窗口，导航到 DigitalOcean Web 界面（[https://cloud.digitalocean.com](https://cloud.digitalocean.com)），并浏览帐户中的不同云资源类别，以验证没有未完成的服务。如果有，请删除它们。可能是作为创建集群或数据库的副作用而创建的负载均衡器或持久卷，这些可能未被前面的命令删除。

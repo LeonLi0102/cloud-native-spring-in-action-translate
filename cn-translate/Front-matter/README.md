@@ -119,13 +119,13 @@ VMware Tanzu @starbuxman
 
 本书提供了一个实践性和项目驱动的体验。从第 2 章开始，您将构建一个由多个云原生应用程序组成的系统，用于一个虚构的在线书店。
 
-您可以从本书的 liveBook（在线）版本 https://livebook.manning.com/book/cloud-native-spring-in-action 获取可执行的代码片段。本书中开发的所有项目的源代码都在 GitHub 上，根据 Apache License 2.0 许可（https://github.com/ThomasVitale/cloud-native-spring-in-action）。对于每一章，您都会找到一个"begin"和一个"end"文件夹。每一章都建立在前一章的基础上，但即使您没有跟随前几章，您也可以始终使用给定章节的"begin"文件夹作为起点。"end"文件夹包含完成该章步骤后的最终结果，您可以将其与自己的解决方案进行比较。例如，您可以在 Chapter03 文件夹中找到第 3 章的源代码，其中包含 03-begin 和 03-end 文件夹。
+您可以从本书的 liveBook（在线）版本 [https://livebook.manning.com/book/cloud-native-spring-in-action](https://livebook.manning.com/book/cloud-native-spring-in-action) 获取可执行的代码片段。本书中开发的所有项目的源代码都在 GitHub 上，根据 Apache License 2.0 许可（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。对于每一章，您都会找到一个"begin"和一个"end"文件夹。每一章都建立在前一章的基础上，但即使您没有跟随前几章，您也可以始终使用给定章节的"begin"文件夹作为起点。"end"文件夹包含完成该章步骤后的最终结果，您可以将其与自己的解决方案进行比较。例如，您可以在 Chapter03 文件夹中找到第 3 章的源代码，其中包含 03-begin 和 03-end 文件夹。
 
 本书中开发的所有应用程序都基于 Java 17 和 Spring Boot 2.7，并使用 Gradle 构建。这些项目可以导入到任何支持 Java、Gradle 和 Spring Boot 的 IDE 中，例如 Visual Studio Code、IntelliJ IDEA 或 Eclipse。您还需要安装 Docker。第 2 章和附录 A 将提供更多信息来帮助您设置本地环境。
 
 这些示例已在 macOS、Ubuntu 和 Windows 上进行了测试。在 Windows 上，我建议使用 Windows Subsystem for Linux 来完成本书中描述的部署和配置任务。在 macOS 上，如果您使用 Apple Silicon 计算机，您可以运行所有示例，但在撰写本文时，某些不提供 ARM64 架构本机支持的工具可能会出现性能问题。相关章节将包含其他上下文信息。
 
-前面提到的 GitHub 仓库（https://github.com/ThomasVitale/cloud-native-spring-in-action）包含本书所有源代码的主分支。除此之外，我计划维护一个 sb-2-main 分支，在其中我会让源代码与 Spring Boot 2.x 的未来版本保持同步，以及一个 sb-3-main 分支，在其中我会根据 Spring Boot 3.x 的未来版本来演进源代码。
+前面提到的 GitHub 仓库（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）包含本书所有源代码的主分支。除此之外，我计划维护一个 sb-2-main 分支，在其中我会让源代码与 Spring Boot 2.x 的未来版本保持同步，以及一个 sb-3-main 分支，在其中我会根据 Spring Boot 3.x 的未来版本来演进源代码。
 
 本书包含许多源代码示例，既在编号清单中，也在普通文本中内联。在这两种情况下，源代码都使用等宽字体格式化，如 this，以将其与普通文本区分开来。有时代码也以粗体显示，以突出显示与本章前面步骤相比已更改的代码，例如当新功能添加到现有代码行时。
 
@@ -133,12 +133,12 @@ VMware Tanzu @starbuxman
 
 ### liveBook 讨论论坛
 
-购买《Cloud Native Spring in Action》可免费访问 liveBook，Manning 的在线阅读平台。使用 liveBook 的独家讨论功能，您可以将评论附加到本书的全局或特定部分或段落。为自己做笔记、回答技术问题以及从作者和其他用户那里获得帮助非常简单。要访问论坛，请转到 https://livebook.manning.com/book/cloud-native-spring-in-action/discussion。您还可以在 https://livebook.manning.com/discussion 了解更多关于 Manning 论坛和行为准则的信息。
+购买《Cloud Native Spring in Action》可免费访问 liveBook，Manning 的在线阅读平台。使用 liveBook 的独家讨论功能，您可以将评论附加到本书的全局或特定部分或段落。为自己做笔记、回答技术问题以及从作者和其他用户那里获得帮助非常简单。要访问论坛，请转到 [https://livebook.manning.com/book/cloud-native-spring-in-action/discussion](https://livebook.manning.com/book/cloud-native-spring-in-action/discussion)。您还可以在 [https://livebook.manning.com/discussion](https://livebook.manning.com/discussion) 了解更多关于 Manning 论坛和行为准则的信息。
 
 Manning 对我们的读者的承诺是提供一个场所，让个人读者之间以及读者与作者之间可以进行有意义的对话。这不是对作者任何特定参与程度的承诺，作者对论坛的贡献仍然是自愿的（且无报酬）。我们建议您尝试向作者提出一些具有挑战性的问题，以免他的兴趣偏离！只要本书仍在印刷中，论坛和先前讨论的存档就可以从出版商的网站访问。
 
 ### 其他在线资源
 
-您可以通过 Twitter（@vitalethomas）、LinkedIn（www.linkedin.com/in/vitalethomas）或我的博客 https://thomasvitale.com 在网上找到我。
+您可以通过 Twitter（@vitalethomas）、LinkedIn（[www.linkedin.com/in/vitalethomas](http://www.linkedin.com/in/vitalethomas)）或我的博客 [https://thomasvitale.com](https://thomasvitale.com) 在网上找到我。
 
-如果您想了解更多关于 Spring 生态系统的知识，我在 https://github.com/ThomasVitale/awesome-spring 维护了一个教育资源列表，包括书籍、视频、播客、课程和活动。
+如果您想了解更多关于 Spring 生态系统的知识，我在 [https://github.com/ThomasVitale/awesome-spring](https://github.com/ThomasVitale/awesome-spring) 维护了一个教育资源列表，包括书籍、视频、播客、课程和活动。

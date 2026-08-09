@@ -15,4 +15,4 @@
 
 GitOps 是一种运维模型，把 Git 作为声明式基础设施和应用程序的中心枢纽。它提供了版本控制、协作和审计跟踪等优势。Argo CD 是一个声明式的、基于 GitOps 的持续交付工具，可用于保持 Kubernetes 集群中的实际状态与 Git 仓库中的期望状态同步。
 
-> 注意：本章示例的源代码在 Chapter15/15-begin 和 Chapter15/15-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码在 Chapter15/15-begin 和 Chapter15/15-end 文件夹中（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

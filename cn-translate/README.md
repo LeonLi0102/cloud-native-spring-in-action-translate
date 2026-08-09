@@ -2,11 +2,11 @@
 
 《Cloud Native Spring in Action With Spring Boot and Kubernetes》的社区中文翻译。
 
-![](assets/00-Vitale-CNS-MEAP-HI.png)
+![](assets/cover.png)
 
-地址：https://www.manning.com/books/cloud-native-spring-in-action
+地址：[https://www.manning.com/books/cloud-native-spring-in-action](https://www.manning.com/books/cloud-native-spring-in-action)
 
-LiveBook: https://livebook.manning.com/book/cloud-native-spring-in-action
+LiveBook: [https://livebook.manning.com/book/cloud-native-spring-in-action](https://livebook.manning.com/book/cloud-native-spring-in-action)
 
 ## 强烈推荐您购买此书
 ## 尊重作者，保护版权

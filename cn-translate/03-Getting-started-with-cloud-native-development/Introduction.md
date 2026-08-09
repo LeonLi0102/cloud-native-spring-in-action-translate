@@ -14,4 +14,4 @@
 
 在此过程中，您将实现在上一章中初始化的 Catalog Service（目录服务）应用。它将负责管理 Polar Bookshop（极地书店）系统中的图书目录。
 
-> **注意** 本章示例的源代码可在 `Chapter03/03-begin` 和 `Chapter03/03-end` 文件夹中找到，分别包含项目的初始状态和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意** 本章示例的源代码可在 `Chapter03/03-begin` 和 `Chapter03/03-end` 文件夹中找到，分别包含项目的初始状态和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

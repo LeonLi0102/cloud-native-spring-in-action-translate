@@ -6,7 +6,7 @@ Docker Compose 提供了比 Docker CLI 更好的体验。您使用 YAML 文件�
 
 在本节中，您将使用 Docker Compose 配置 Catalog Service 和 PostgreSQL 容器的执行。然后学习如何调试在容器中运行的 Spring Boot 应用程序。
 
-如果您安装了 Docker Desktop for Mac 或 Docker Desktop for Windows，则已经安装了 Docker Compose。如果您使用 Linux，请访问 Docker Compose 安装页面 www.docker.com 并按照您的发行版说明操作。无论哪种情况，您都可以通过运行命令 `docker-compose --version` 来验证 Docker Compose 是否已正确安装。
+如果您安装了 Docker Desktop for Mac 或 Docker Desktop for Windows，则已经安装了 Docker Compose。如果您使用 Linux，请访问 Docker Compose 安装页面 [www.docker.com](http://www.docker.com) 并按照您的发行版说明操作。无论哪种情况，您都可以通过运行命令 `docker-compose --version` 来验证 Docker Compose 是否已正确安装。
 
 ### 6.3.1 使用 Docker Compose 管理容器生命周期
 
@@ -68,7 +68,7 @@ Docker Compose 默认将两个容器配置在同一网络上，因此您不需�
 $ docker-compose up -d
 ```
 
-命令完成后，尝试在 http://localhost:9001/books 上调用 Catalog Service 应用程序并验证其是否正常工作。然后保持容器运行并继续下一节，在那里您将调试 Catalog Service 应用程序。
+命令完成后，尝试在 [http://localhost:9001/books](http://localhost:9001/books) 上调用 Catalog Service 应用程序并验证其是否正常工作。然后保持容器运行并继续下一节，在那里您将调试 Catalog Service 应用程序。
 
 ### 6.3.2 调试 Spring Boot 容器
 
@@ -127,6 +127,6 @@ $ docker-compose up -d
 $ docker-compose down
 ```
 
-> 注意：在本书中，我只涵盖成功将 Spring Boot 应用程序部署到 Kubernetes 生产环境所需的 Docker 主题。如果您有兴趣了解有关 Docker 镜像、网络、卷、安全和架构的更多内容，请参阅官方文档：https://docs.docker.com。此外，Manning 目录中有几本关于此主题的书籍，如 Elton Stoneman 的《Learn Docker in a Month of Lunches》（Manning, 2020）和 Ian Miell 与 Aidan Hobson Sayers 的《Docker in Practice》第二版（Manning, 2019）。
+> 注意：在本书中，我只涵盖成功将 Spring Boot 应用程序部署到 Kubernetes 生产环境所需的 Docker 主题。如果您有兴趣了解有关 Docker 镜像、网络、卷、安全和架构的更多内容，请参阅官方文档：[https://docs.docker.com](https://docs.docker.com)。此外，Manning 目录中有几本关于此主题的书籍，如 Elton Stoneman 的《Learn Docker in a Month of Lunches》（Manning, 2020）和 Ian Miell 与 Aidan Hobson Sayers 的《Docker in Practice》第二版（Manning, 2019）。
 
 当您对应用程序进行更改时，您不想手动构建和发布新镜像。那是 GitHub Actions 等自动化工作流引擎的工作。下一节将向您展示如何完成我们在第 3 章开始的部署流水线的提交阶段。

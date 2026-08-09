@@ -21,4 +21,4 @@
 
 最后，您将探索如何使用 Spring Boot、Spring Security 和 Testcontainers 测试这些更改。
 
-> **注意** 本章示例的源代码可在 Chapter12/12-begin 和 Chapter12/12-end 文件夹中找到，分别包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意** 本章示例的源代码可在 Chapter12/12-begin 和 Chapter12/12-end 文件夹中找到，分别包含项目的初始和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

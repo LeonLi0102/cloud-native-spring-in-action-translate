@@ -22,8 +22,8 @@ Spring 通过 Spring Data 项目支持多种数据持久化技术，该项目包
 
 Spring Data 提供了两个主要选项来通过 JDBC 驱动程序将应用程序与关系型数据库集成：Spring Data JDBC 和 Spring Data JPA。如何选择？答案取决于您的需求和具体场景。
 
-Spring Data JPA（https://spring.io/projects/spring-data-jpa）是 Spring Data 项目中使用最广泛的模块。它基于 Java 持久化 API（JPA），这是 Jakarta EE（以前称为 Java EE）中包含的标准规范。Hibernate 是最流行的实现，它是一个强大且经过实战检验的对象关系映射（ORM）框架，用于管理 Java 应用程序中的数据持久化。Hibernate 提供了许多有用的功能，但它也是一个复杂的框架。如果您不了解持久化上下文、延迟加载、脏检查或会话等方面，可能会遇到难以调试的问题。一旦您更了解这个框架，就会欣赏 Spring Data JPA 如何简化操作并提高生产力。
+Spring Data JPA（[https://spring.io/projects/spring-data-jpa](https://spring.io/projects/spring-data-jpa)）是 Spring Data 项目中使用最广泛的模块。它基于 Java 持久化 API（JPA），这是 Jakarta EE（以前称为 Java EE）中包含的标准规范。Hibernate 是最流行的实现，它是一个强大且经过实战检验的对象关系映射（ORM）框架，用于管理 Java 应用程序中的数据持久化。Hibernate 提供了许多有用的功能，但它也是一个复杂的框架。如果您不了解持久化上下文、延迟加载、脏检查或会话等方面，可能会遇到难以调试的问题。一旦您更了解这个框架，就会欣赏 Spring Data JPA 如何简化操作并提高生产力。
 
-Spring Data JDBC（https://spring.io/projects/spring-data-jdbc）是 Spring Data 家族中较新的成员。它按照领域驱动设计（DDD）概念（如聚合、聚合根和仓库）与关系型数据库集成。它轻量级、简单，是微服务的绝佳选择，因为微服务中的领域通常被定义为限界上下文（另一个 DDD 概念）。它给开发人员更多控制 SQL 查询的权力，并允许使用不可变实体。作为 Spring Data JPA 的更简单替代方案，它不能在所有场景中替代 JPA，因为它不提供 JPA 的所有功能。
+Spring Data JDBC（[https://spring.io/projects/spring-data-jdbc](https://spring.io/projects/spring-data-jdbc)）是 Spring Data 家族中较新的成员。它按照领域驱动设计（DDD）概念（如聚合、聚合根和仓库）与关系型数据库集成。它轻量级、简单，是微服务的绝佳选择，因为微服务中的领域通常被定义为限界上下文（另一个 DDD 概念）。它给开发人员更多控制 SQL 查询的权力，并允许使用不可变实体。作为 Spring Data JPA 的更简单替代方案，它不能在所有场景中替代 JPA，因为它不提供 JPA 的所有功能。
 
 我选择在这里介绍 Spring Data JDBC，是因为它与云原生应用程序的良好契合和简单性。得益于 Spring Data 的通用抽象和模式，您可以轻松地将项目从 Spring Data JDBC 转换为 Spring Data JPA。在接下来的章节中，我将指出两者之间的主要差异，以便您有足够的信息尝试使用 Spring Data JPA 实现相同的需求。

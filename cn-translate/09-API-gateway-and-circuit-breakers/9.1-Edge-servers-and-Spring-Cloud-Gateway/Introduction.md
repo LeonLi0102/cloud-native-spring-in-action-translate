@@ -8,4 +8,4 @@ Spring Cloud Gateway 大大简化了构建边缘服务的过程，专注于简�
 
 下一节将教你如何使用 Spring Cloud Gateway 设置边缘服务器。你将了解路由、断言和过滤器，它们是网关的构建块。你还将把前一章学到的重试和超时模式应用到网关和下游服务之间的交互中。
 
-> **注意：** 如果你没有跟随前面章节的示例，可以参考本书附带的仓库，使用 Chapter09/09-begin 中的项目作为起点（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意：** 如果你没有跟随前面章节的示例，可以参考本书附带的仓库，使用 Chapter09/09-begin 中的项目作为起点（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

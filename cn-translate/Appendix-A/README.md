@@ -11,9 +11,9 @@
 
 ## A.1 Java
 
-本书中的所有示例都基于 Java 17，这是撰写本文时 Java 的最新长期支持版本。您可以安装任何 OpenJDK 17 发行版。我将使用 Adoptium 项目（https://adoptium.net）的 Eclipse Temurin，以前称为 AdoptOpenJDK，但您可以随意选择其他发行版。
+本书中的所有示例都基于 Java 17，这是撰写本文时 Java 的最新长期支持版本。您可以安装任何 OpenJDK 17 发行版。我将使用 Adoptium 项目（[https://adoptium.net](https://adoptium.net)）的 Eclipse Temurin，以前称为 AdoptOpenJDK，但您可以随意选择其他发行版。
 
-在您的计算机上管理不同的 Java 版本和发行版可能很痛苦。我建议使用像 sdkman（https://sdkman.io）这样的工具来轻松安装、更新和切换不同的 JDK。在 macOS 和 Linux 上，您可以按如下方式安装 sdkman：
+在您的计算机上管理不同的 Java 版本和发行版可能很痛苦。我建议使用像 sdkman（[https://sdkman.io](https://sdkman.io)）这样的工具来轻松安装、更新和切换不同的 JDK。在 macOS 和 Linux 上，您可以按如下方式安装 sdkman：
 
 ```bash
 $ curl -s "https://get.sdkman.io" | bash
@@ -63,18 +63,18 @@ Using java version 17.0.3-tem
 
 ## A.2 Docker
 
-Open Container Initiative（OCI）是一个 Linux 基金会项目，定义了使用容器的行业标准（https://opencontainers.org）。具体来说，OCI Image Specification 定义了如何构建容器镜像，OCI Runtime Specification 定义了如何运行这些容器镜像，OCI Distribution Specification 定义了如何分发它们。我们在整本书中用于使用容器的工具是 Docker，它符合 OCI 规范。
+Open Container Initiative（OCI）是一个 Linux 基金会项目，定义了使用容器的行业标准（[https://opencontainers.org](https://opencontainers.org)）。具体来说，OCI Image Specification 定义了如何构建容器镜像，OCI Runtime Specification 定义了如何运行这些容器镜像，OCI Distribution Specification 定义了如何分发它们。我们在整本书中用于使用容器的工具是 Docker，它符合 OCI 规范。
 
-在 Docker 网站（www.docker.com）上，您可以找到在本地环境中设置 Docker 的说明。我将使用撰写本文时可用的最新版本：Docker 20.10 和 Docker Desktop 4.11。
+在 Docker 网站（[www.docker.com](http://www.docker.com)）上，您可以找到在本地环境中设置 Docker 的说明。我将使用撰写本文时可用的最新版本：Docker 20.10 和 Docker Desktop 4.11。
 
 * 在 Linux 上，您可以直接安装 Docker 开源平台。它也称为 Docker Community Edition（Docker CE）。
-* 在 macOS 和 Windows 上，您可以选择使用 Docker Desktop，这是一个构建在 Docker 之上的商业产品，使您能够从这些操作系统运行 Linux 容器。在撰写本文时，Docker Desktop 对个人使用、教育、非商业开源项目和小型企业免费。请在安装软件之前仔细阅读 Docker Subscription Service Agreement，并确保您遵守它（www.docker.com/legal）。
+* 在 macOS 和 Windows 上，您可以选择使用 Docker Desktop，这是一个构建在 Docker 之上的商业产品，使您能够从这些操作系统运行 Linux 容器。在撰写本文时，Docker Desktop 对个人使用、教育、非商业开源项目和小型企业免费。请在安装软件之前仔细阅读 Docker Subscription Service Agreement，并确保您遵守它（[www.docker.com/legal](http://www.docker.com/legal)）。
 
 Docker Desktop 支持 ARM64 和 AMD64 架构，这意味着您可以在配备 Apple Silicon 处理器的新 Apple 计算机上运行本书中的所有示例。
 
 如果您在 Windows 上工作，Docker Desktop 提供两种类型的设置：Hyper-V 或 WSL2。我建议您选择后者，因为它提供更好的性能，并且更稳定。
 
-Docker 预配置为从 Docker Hub 下载 OCI 镜像，Docker Hub 是一个托管许多流行开源项目镜像的容器注册表，如 Ubuntu、PostgreSQL 和 Redis。它是免费使用的，但如果您匿名使用，它会受到严格的速率限制策略。因此，我建议您在 Docker 网站（www.docker.com）上创建一个免费帐户。
+Docker 预配置为从 Docker Hub 下载 OCI 镜像，Docker Hub 是一个托管许多流行开源项目镜像的容器注册表，如 Ubuntu、PostgreSQL 和 Redis。它是免费使用的，但如果您匿名使用，它会受到严格的速率限制策略。因此，我建议您在 Docker 网站（[www.docker.com](http://www.docker.com)）上创建一个免费帐户。
 
 创建帐户后，打开终端窗口并向 Docker Hub 进行身份验证（确保您的 Docker 引擎正在运行）。由于它是默认容器注册表，因此您无需指定其 URL：
 
@@ -104,19 +104,19 @@ $ docker pull ubuntu:22.04
 | `docker rm <name>` | 删除已停止的容器 |
 | `docker rmi <image>` | 删除镜像 |
 
-我们在整本书中构建的所有容器都符合 OCI 规范，将与任何其他 OCI 容器运行时配合使用，例如 Podman（https://podman.io）。如果您决定使用 Docker 以外的平台，请注意，我们用于本地开发和集成测试的一些工具可能需要额外的配置才能正常工作。
+我们在整本书中构建的所有容器都符合 OCI 规范，将与任何其他 OCI 容器运行时配合使用，例如 Podman（[https://podman.io](https://podman.io)）。如果您决定使用 Docker 以外的平台，请注意，我们用于本地开发和集成测试的一些工具可能需要额外的配置才能正常工作。
 
 ## A.3 Kubernetes
 
 有几种方法可以在本地环境中安装 Kubernetes。以下是一些最常用的选项：
 
-* **minikube**（https://minikube.sigs.k8s.io）允许您在任何操作系统上运行本地 Kubernetes 集群。它由 Kubernetes 社区维护。
-* **kind**（https://kind.sigs.k8s.io）允许您以 Docker 容器的形式运行本地 Kubernetes 集群。它主要是为了测试 Kubernetes 本身而开发的，但您也可以将其用于 Kubernetes 的本地开发。它由 Kubernetes 社区维护。
-* **k3d**（https://k3d.io）允许您基于 k3s 运行本地 Kubernetes 集群，k3s 是由 Rancher Labs 实现的 Kubernetes 最小发行版。它由 Rancher 社区维护。
+* **minikube**（[https://minikube.sigs.k8s.io](https://minikube.sigs.k8s.io)）允许您在任何操作系统上运行本地 Kubernetes 集群。它由 Kubernetes 社区维护。
+* **kind**（[https://kind.sigs.k8s.io](https://kind.sigs.k8s.io)）允许您以 Docker 容器的形式运行本地 Kubernetes 集群。它主要是为了测试 Kubernetes 本身而开发的，但您也可以将其用于 Kubernetes 的本地开发。它由 Kubernetes 社区维护。
+* **k3d**（[https://k3d.io](https://k3d.io)）允许您基于 k3s 运行本地 Kubernetes 集群，k3s 是由 Rancher Labs 实现的 Kubernetes 最小发行版。它由 Rancher 社区维护。
 
 请随意选择最适合您需求的工具。我将在整本书中使用 minikube，因为它具有稳定性，并且与所有操作系统和架构兼容，包括新的 Apple Silicon 计算机。您应该至少有 2 个 CPU 和 4 GB 可用内存才能使用 minikube 运行书中的所有示例。
 
-您可以在项目网站上找到安装指南（https://minikube.sigs.k8s.io）。我将使用撰写本文时可用的最新版本：Kubernetes 1.24 和 minikube 1.26。在 macOS 上，您可以使用 Homebrew 安装 minikube，如下所示：
+您可以在项目网站上找到安装指南（[https://minikube.sigs.k8s.io](https://minikube.sigs.k8s.io)）。我将使用撰写本文时可用的最新版本：Kubernetes 1.24 和 minikube 1.26。在 macOS 上，您可以使用 Homebrew 安装 minikube，如下所示：
 
 ```bash
 $ brew install minikube
@@ -136,7 +136,7 @@ $ minikube start --driver=docker
 $ minikube config set driver docker
 ```
 
-要与新创建的 Kubernetes 集群交互，您需要安装 kubectl，即 Kubernetes CLI。安装说明可在官方网站上找到（https://kubernetes.io/docs/tasks/tools）。在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
+要与新创建的 Kubernetes 集群交互，您需要安装 kubectl，即 Kubernetes CLI。安装说明可在官方网站上找到（[https://kubernetes.io/docs/tasks/tools](https://kubernetes.io/docs/tasks/tools)）。在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
 ```bash
 $ brew install kubectl
@@ -177,7 +177,7 @@ $ minikube stop
 
 ### A.4.1 HTTPie
 
-HTTPie 是一个方便的"命令行 HTTP 和 API 测试客户端"（https://httpie.org）。它专为人类设计，提供卓越的用户体验。请参考官方文档获取安装说明和有关该工具的更多信息。
+HTTPie 是一个方便的"命令行 HTTP 和 API 测试客户端"（[https://httpie.org](https://httpie.org)）。它专为人类设计，提供卓越的用户体验。请参考官方文档获取安装说明和有关该工具的更多信息。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
@@ -193,7 +193,7 @@ $ http pie.dev/get
 
 ### A.4.2 Grype
 
-在供应链安全的背景下，我们使用 Grype 扫描 Java 代码库和容器镜像中的漏洞（https://github.com/anchore/grype）。扫描在您运行它的机器上本地进行，这意味着您的文件或工件都不会发送到外部服务。这使其非常适合更受监管的环境或气隔场景。有关更多信息，请参考官方文档。
+在供应链安全的背景下，我们使用 Grype 扫描 Java 代码库和容器镜像中的漏洞（[https://github.com/anchore/grype](https://github.com/anchore/grype)）。扫描在您运行它的机器上本地进行，这意味着您的文件或工件都不会发送到外部服务。这使其非常适合更受监管的环境或气隔场景。有关更多信息，请参考官方文档。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
@@ -202,11 +202,11 @@ $ brew tap anchore/grype
 $ brew install grype
 ```
 
-该工具尚不适用于 Windows。如果您是 Windows 用户，我建议利用 Windows Subsystem for Linux 2（WSL2）并在那里安装 Grype。有关 WSL2 的更多信息，您可以参考官方文档（https://docs.microsoft.com/en-us/windows/wsl/）。
+该工具尚不适用于 Windows。如果您是 Windows 用户，我建议利用 Windows Subsystem for Linux 2（WSL2）并在那里安装 Grype。有关 WSL2 的更多信息，您可以参考官方文档（[https://docs.microsoft.com/en-us/windows/wsl/](https://docs.microsoft.com/en-us/windows/wsl/)）。
 
 ### A.4.3 Tilt
 
-Tilt（https://tilt.dev）旨在在使用 Kubernetes 时提供良好的开发人员体验。它是一个开源工具，提供在本地环境中构建、部署和管理容器化工作负载的功能。有关安装说明，请参考官方文档（https://docs.tilt.dev/install.html）。
+Tilt（[https://tilt.dev](https://tilt.dev)）旨在在使用 Kubernetes 时提供良好的开发人员体验。它是一个开源工具，提供在本地环境中构建、部署和管理容器化工作负载的功能。有关安装说明，请参考官方文档（[https://docs.tilt.dev/install.html](https://docs.tilt.dev/install.html)）。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
@@ -216,7 +216,7 @@ $ brew install tilt-dev/tap/tilt
 
 ### A.4.4 Octant
 
-Octant（https://octant.dev）是一个"面向开发人员的 Kubernetes 开源 Web 界面，让您可以检查 Kubernetes 集群及其应用程序。"有关安装说明，请参考官方文档（https://reference.octant.dev）。
+Octant（[https://octant.dev](https://octant.dev)）是一个"面向开发人员的 Kubernetes 开源 Web 界面，让您可以检查 Kubernetes 集群及其应用程序。"有关安装说明，请参考官方文档（[https://reference.octant.dev](https://reference.octant.dev)）。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
@@ -226,7 +226,7 @@ $ brew install octant
 
 ### A.4.5 Kubeval
 
-Kubeval（www.kubeval.com）是当您需要"验证一个或多个 Kubernetes 配置文件"时的方便工具。我们将在部署管道中使用它来确保所有 Kubernetes 清单格式正确且符合 Kubernetes API。有关安装说明，请参考官方文档（www.kubeval.com/installation/）。
+Kubeval（[www.kubeval.com](http://www.kubeval.com)）是当您需要"验证一个或多个 Kubernetes 配置文件"时的方便工具。我们将在部署管道中使用它来确保所有 Kubernetes 清单格式正确且符合 Kubernetes API。有关安装说明，请参考官方文档（[www.kubeval.com/installation/](http://www.kubeval.com/installation/)）。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 
@@ -237,7 +237,7 @@ $ brew install kubeval
 
 ### A.4.6 Knative CLI
 
-Knative 是一个"基于 Kubernetes 的平台，用于部署和管理现代无服务器工作负载"（https://knative.dev）。该项目提供了一个方便的 CLI 工具，您可以使用它与 Kubernetes 集群中的 Knative 资源进行交互。有关安装说明，请参考官方文档（https://knative.dev/docs/install/quickstart-install）。
+Knative 是一个"基于 Kubernetes 的平台，用于部署和管理现代无服务器工作负载"（[https://knative.dev](https://knative.dev)）。该项目提供了一个方便的 CLI 工具，您可以使用它与 Kubernetes 集群中的 Knative 资源进行交互。有关安装说明，请参考官方文档（[https://knative.dev/docs/install/quickstart-install](https://knative.dev/docs/install/quickstart-install)）。
 
 在 macOS 和 Linux 上，您可以使用 Homebrew 安装它，如下所示：
 

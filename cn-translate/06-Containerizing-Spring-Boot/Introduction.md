@@ -17,4 +17,4 @@
 
 最后，我们将继续第 3 章开始的部署流水线工作。我将向您展示如何向提交阶段添加新步骤，以自动将容器镜像打包和发布到 GitHub Container Registry。
 
-> 注意：本章示例的源代码在 Chapter06/06-begin 和 Chapter06/06-end 文件夹中，包含项目的初始和最终状态（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码在 Chapter06/06-begin 和 Chapter06/06-end 文件夹中，包含项目的初始和最终状态（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

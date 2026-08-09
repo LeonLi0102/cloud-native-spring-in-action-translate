@@ -15,4 +15,4 @@
 
 最后，你会看到 Kustomize——一个声明式工具，可让你把多个 Kubernetes 清单作为一个整体来处理，并根据部署环境（例如开发、staging、生产）对配置进行定制。
 
-> 注意：本章示例的源代码在 Chapter14/14-begin 和 Chapter14/14-end 文件夹中（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> 注意：本章示例的源代码在 Chapter14/14-begin 和 Chapter14/14-end 文件夹中（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

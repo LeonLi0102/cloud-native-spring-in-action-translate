@@ -23,4 +23,4 @@ Order Service 还将通过其 REST API 与 Catalog Service 交互，以获取有
 
 现在开始写代码。
 
-> **注意：** 如果你没有跟随前面章节的示例，可以参考本书附带的仓库，使用 Chapter08/08-begin 文件夹中的项目作为起点（https://github.com/ThomasVitale/cloud-native-spring-in-action）。
+> **注意：** 如果你没有跟随前面章节的示例，可以参考本书附带的仓库，使用 Chapter08/08-begin 文件夹中的项目作为起点（[https://github.com/ThomasVitale/cloud-native-spring-in-action](https://github.com/ThomasVitale/cloud-native-spring-in-action)）。

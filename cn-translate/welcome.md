@@ -1,6 +1,6 @@
 # 欢迎
 
-感谢您购买 MEAP 版的《Cloud Native Spring In Action》。
+感谢您购买《Cloud Native Spring In Action》。
 
 为了从本书中获得最大的收益，您需要熟练掌握 Java 编程，需要具有构建 web 应用程序的经验，还要有 Spring 核心功能的基本知识。我假设您也熟悉 Git、面向对象编程、分布式系统、数据库和测试等。
 
