@@ -1,0 +1,2784 @@
+332
+
+CHAPTER 10 Event-driven applications and functions
+
+technology that has become increasingly used in the last few years, such as to implement the event sourcing pattern or real-time stream processing. The Spring for Apache Kafka project (https://spring.io/projects/spring-kafka) provides that integration.
+This section will cover the fundamental aspects of the AMQP protocol and RabbitMQ, which is the message broker we'll use to implement messaging in the Polar Bookshop system. On the application side, we'll use Spring Cloud Stream, which offers convenient and robust integration with RabbitMQ by relying on the Spring AMQP project.
+10.2.1 Understanding AMQP for messaging systems
+When using an AMQP-based solution like RabbitMQ, the actors involved in the interaction can be categorized as follows:
+ Producer--The entity sending messages (publisher)  Consumer--The entity receiving messages (subscriber)  Message broker--The middleware accepting messages from producers and rout-
+ing them to consumers
+Figure 10.3 illustrates the interaction between the actors. From the protocol point of view, we can also say that the broker is the server, while producers and consumers are the clients.
+
+The AMQP actors
+
+Producer
+
+Sends messages to
+
+Message broker
+
+Receives messages from
+
+Consumer
+
+Figure 10.3 In AMQP, a broker accepts messages from producers and routes them to consumers.
+NOTE RabbitMQ was initially developed to support AMQP, but it also supports other protocols, including STOMP, MQTT, and even WebSockets for delivering messages over HTTP. Since version 3.9, it also supports event streaming.
+The AMQP messaging model is based on exchanges and queues, as illustrated in figure 10.4. Producers send messages to an exchange. RabbitMQ computes which queues should receive a copy of the message according to a given routing rule. Consumers read messages from a queue.
+The protocol establishes that a message comprises attributes and a payload, as shown in figure 10.5. AMQP defines some attributes, but you can add your own to pass the information that's needed to route the message correctly. The payload must be of a binary type and has no constraints besides that.
+Now that you know the basics of AMQP, let's get RabbitMQ up and running.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.2 Message brokers with RabbitMQ
+
+Producer
+
+AMQP message routing
+
+Message broker
+
+Sends messages
+to
+
+Routes messages
+to
+Exchange
+
+Queue
+
+Routes messages
+to
+
+Queue
+
+333
+
+Receives messages
+from
+
+Consumer
+
+Receives messages
+from
+
+Consumer
+
+Figure 10.4 Producers publish messages to an exchange. Consumers subscribe to queues. Exchanges route messages to queues according to a routing algorithm.
+
+Used by AMQP and/or the application. Stored as key/value pairs.
+
+AMQP Message Attributes Payload
+
+Used by the application. Stored as a byte array.
+
+Figure 10.5 An AMQP Message is composed of attributes and a payload.
+10.2.2 Using RabbitMQ for publish/subscribe communications
+RabbitMQ, on top of AMQP, provides a simple yet effective solution for implementing a publish/subscribe interaction that is precisely the one we want to establish between Order Service and Dispatcher Service. Besides the functionality itself, it's essential to look for those properties I addressed in previous chapters for cloud systems and data services, including resilience, high availability, and data replication. RabbitMQ offers all of that. For example, it provides delivery acknowledgment, clustering, monitoring, queue durability, and replication. Furthermore, several cloud providers offer integrations with managed RabbitMQ services.
+For now, you'll run RabbitMQ as a container on your local machine. First, make sure your Docker Engine is running. Then open the docker-compose.yml file located in your polar-deployment repository.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+334
+
+CHAPTER 10 Event-driven applications and functions
+
+NOTE If you haven't followed along with the examples, you can use Chapter10/ 10-begin/polar-deployment/docker/docker-compose.yml from the source code accompanying the book as a starting point.
+In your docker-compose.yml file, add a new service definition using the RabbitMQ official image (including the management plugin) and expose it through port 5672 (for AMQP) and 15672 (for the management console). The RabbitMQ management plugin is convenient for inspecting exchanges and queues from a browser-based UI.
+
+Listing 10.1 Defining a container for RabbitMQ
+
+version: "3.8"
+
+services: ... polar-rabbitmq: image: rabbitmq:3.10-management
+
+The official RabbitMQ image with the management plugin enabled
+
+Configuration file mounted as a volume
+
+container_name: polar-rabbitmq ports:
+- 5672:5672
+
+The port where RabbitMQ listens for AMQP requests
+
+- 15672:15672 volumes:
+
+The port that exposes the management GUI
+
+- ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+
+The configuration is based on a file mounted as a volume, similar to how we configured PostgreSQL. Create a docker/rabbitmq folder within your polar-deployment repository, and add a new rabbitmq.conf file to configure the default account.
+
+Listing 10.2 Configuring RabbitMQ default account
+default_user = user default_pass = password
+
+Next, open a Terminal window, navigate to the folder where your docker-compose.yml file is located, and run the following command to start RabbitMQ:
+
+$ docker-compose up -d polar-rabbitmq
+
+Finally, open a browser window and navigate to http://localhost:15672 to access the RabbitMQ management console. Log in using the credentials we defined in the configuration file (user/password) and have a look around. In the following sections you'll be able to follow the message flows between Order Service and Dispatcher Service in the Exchanges and Queues areas of the management console.
+When you're done exploring the RabbitMQ management console, you can shut it down as follows:
+
+$ docker-compose down
+
+Spring Cloud Stream helps integrate applications with event brokers like RabbitMQ seamlessly. But before we get to it, we need to define the logic that will process messages.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+335
+
+In the next section, you'll learn about Spring Cloud Function and how to implement the business logic of the new order flow in terms of suppliers, functions, and consumers.
+10.3 Functions with Spring Cloud Function
+Oleg Zhurakousky, project lead for Spring Cloud Function and Spring Cloud Stream, often asks conference audiences this question: Is there any business feature that you cannot define in terms of suppliers, functions, and consumers? It's an interesting and challenging question. Can you think of anything? Most software requirements can be expressed with functions.
+Why use functions in the first place? They are a simple, uniform, and portable programming model that is a perfect fit for event-driven architectures, inherently based on these concepts.
+Spring Cloud Function promotes the implementation of business logic via functions based on the standard interfaces introduced by Java 8: Supplier, Function, and Consumer.
+ Supplier--A supplier is a function with only output, no input. It's also known as a producer, publisher, or source.
+ Function--A function has both input and output. It's also known as a processor.  Consumer--A consumer is a function with input but no output. It's also known
+as a subscriber or sink.
+In this section, you'll learn how Spring Cloud Function works and how to implement business logic via functions.
+10.3.1 Using the functional paradigm in Spring Cloud Function
+Let's get started with functions by considering the business requirements I listed earlier for the Dispatcher Service application. Whenever an order is accepted, Dispatcher Service should be responsible for packing and labeling the order, and for notifying interested parties (in this case, the Order Service) once the order has been dispatched. For simplicity, let's assume that both the pack and label actions are performed by the application itself, and we'll consider how to implement the business logic via functions before even thinking about frameworks.
+The two actions to be performed as part of dispatching an order could be represented as functions:
+ The pack function takes the identifier of an accepted order as input, packs the order (in the example, the processing is represented by a log message), and returns the order identifier as output, ready to be labeled.
+ The label function takes the identifier of a packed order as input, labels the order (in the example, the processing is represented by a log message), and returns the order identifier as output, completing the dispatch.
+The composition of these two functions in sequence gives the full implementation of the business logic for Dispatcher Service, as shown in figure 10.6.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+336
+Order accepted
+
+CHAPTER 10 Event-driven applications and functions
+
+Function composition (overview) Dispatcher Service
+
+pack()
+
+label()
+
+Order dispatched
+
+Input data
+
+Data processing
+
+Output data
+
+Figure 10.6 The business logic for Dispatcher Service is implemented as a composition of two functions: pack and label.
+
+Let's see how we can implement these functions and what Spring Cloud Function brings to the table.
+INITIALIZING A SPRING CLOUD FUNCTION PROJECT You can initialize the Dispatcher Service project from Spring Initializr (https://start .spring.io) and store the result in a new dispatcher-service Git repository. The parameters for the initialization are shown in figure 10.7.
+
+Figure 10.7 The parameters for initializing the Dispatcher Service project Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+337
+
+TIP In the begin folder for this chapter, you can find a curl command that you can run in a Terminal window. It downloads a zip file containing all the code you need to get started, without going through the manual generation on the Spring Initializr website.
+The resulting dependencies section of the build.gradle file looks like this:
+
+dependencies { implementation 'org.springframework.boot:spring-boot-starter' implementation 'org.springframework.cloud:spring-cloud-function-context' testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+The main dependencies are
+ Spring Boot (org.springframework.boot:spring-boot-starter)--Provides basic Spring Boot libraries and auto-configuration.
+ Spring Cloud Function (org.springframework.cloud:spring-cloud-functioncontext)--Provides the Spring Cloud Function libraries that promote and support business logic implementation via functions.
+ Spring Boot Test (org.springframework.boot:spring-boot-starter-test)-- Provides several libraries and utilities for testing applications, including Spring Test, JUnit, AssertJ, and Mockito. It's automatically included in every Spring Boot project.
+Next, rename the autogenerated application.properties file to application.yml, and configure the server port and application name. At present, the application doesn't contain a web server. Nevertheless, we'll configure the server port number because it will be used when we add monitoring capabilities to the application in chapter 13.
+
+Listing 10.3 Configuring server and application name
+
+server: port: 9003
+spring:
+
+The port that will be used by the embedded web server
+
+application: name: dispatcher-service
+
+The name of the application
+
+Next, let's see how we can implement the business logic using functions.
+IMPLEMENTING THE BUSINESS LOGIC VIA FUNCTIONS The business logic can be implemented in a standard way by using the Java Function interface. No Spring needed.
+Let's first consider the pack function. The input of the function should provide the identifier of an order that has previously been accepted. We can model this data via a simple DTO.
+In the com.polarbookshop.dispatcherservice package, create an OrderAcceptedMessage record to hold the order identifier.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+338
+
+CHAPTER 10 Event-driven applications and functions
+
+Listing 10.4 A DTO representing the event about orders being accepted
+package com.polarbookshop.dispatcherservice;
+
+public record OrderAcceptedMessage ( Long orderId
+){}
+
+DTO containing the order identifier as a Long field
+
+NOTE Modeling events is a fascinating topic that goes beyond Spring and would require a few chapters to cover properly. If you'd like to learn more about this subject, I recommend reading these articles by Martin Fowler: "Focusing on Events" (https://martinfowler.com/eaaDev/EventNarrative.html); "Domain Event" (https://martinfowler.com/eaaDev/DomainEvent.html); and "What do you mean by `Event-Driven'?" (https://martinfowler.com/articles/ 201701-event-driven.html), all on his MartinFowler.com blog.
+
+The output of the function can be the simple identifier of the packed order represented as a Long object.
+Now that input and output are clear, it's time to define the function. Create a new DispatchingFunctions class, and add a pack() method to implement order packing as a function.
+
+Listing 10.5 Implementing the "pack" action as a function
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.slf4j.Logger; import org.slf4j.LoggerFactory;
+
+public class DispatchingFunctions { private static final Logger log = LoggerFactory.getLogger(DispatchingFunctions.class);
+public Function<OrderAcceptedMessage, Long> pack() {
+
+Function implementing the order-packing business logic
+
+return orderAcceptedMessage -> { log.info("The order with id {} is packed.", orderAcceptedMessage.orderId()); return orderAcceptedMessage.orderId();
+
+It takes an OrderAcceptedMessage object as input.
+
+}; } }
+
+Returns an order identifier (Long) as output
+
+You can see how there's only standard Java code in this listing. I strive to provide realworld examples in this book, so you might wonder what's happening here. In this case, I decided to focus on the essential aspects of using the functional programming paradigm in the context of an event-driven application. Inside the function, you can add any processing logic you like. What matters here is the contract provided by the function, its signature: inputs and outputs. After defining that, you're free to implement the function as needed. I could have provided a more real-world implementation
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+339
+
+of this function, but it would have added nothing valuable considering the goal of this chapter. It doesn't even have to be Spring-based code. And in this example, it's not: it's plain Java code.
+Spring Cloud Function is capable of managing functions defined in different ways, as long as they adhere to the standard Java interfaces Function, Supplier, and Consumer. You can make Spring Cloud Function aware of your functions by registering them as beans. Go ahead and do that for the pack() function by annotating the DispatchingFunctions class as @Configuration and the method as @Bean.
+
+Listing 10.6 Configuring the function as a bean
+
+@Configuration public class DispatchingFunctions {
+private static final Logger log =
+
+Functions are defined in a configuration class.
+
+LoggerFactory.getLogger(DispatchingFunctions.class);
+
+@Bean public Function<OrderAcceptedMessage, Long> pack() {
+return orderAcceptedMessage -> { log.info("The order with id {} is packed.", orderAcceptedMessage.orderId()); return orderAcceptedMessage.orderId();
+}; } }
+
+Functions defined as beans can be discovered and managed by Spring Cloud Function.
+
+As you'll see later, functions registered as beans are enhanced with extra features by the Spring Cloud Function framework. The beauty of this is that the business logic itself is not aware of the surrounding framework. You can evolve it independently and test it without being concerned about framework-related issues.
+USING IMPERATIVE AND REACTIVE FUNCTIONS Spring Cloud Function supports both imperative and reactive code, so you're free to implement functions using reactive APIs like Mono and Flux. You can also mix and match. For the sake of the example, let's implement the label function using Project Reactor. The input of the function will be the identifier of an order that has been packed, represented as a Long object. The output of the function will be the identifier of the order that has been labeled, resulting in the dispatching process being complete. We can model such data via a simple DTO, just like we did for OrderAcceptedMessage.
+In the com.polarbookshop.dispatcherservice package, create an OrderDispatchedMessage record to hold the identifier for a dispatched order.
+
+Listing 10.7 A DTO representing the event about orders being dispatched
+
+package com.polarbookshop.dispatcherservice;
+public record OrderDispatchedMessage ( Long orderId
+){}
+
+DTO containing the order identifier as a Long field
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+340
+
+CHAPTER 10 Event-driven applications and functions
+
+Now that the input and output are clear, it's time to define the function. Open the DispatchingFunctions class and add a label() method to implement the order labeling as a function. Since we want it to be reactive, both input and output are wrapped in a Flux publisher.
+
+Listing 10.8 Implementing the "label" action as a function
+
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import reactor.core.publisher.Flux; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration;
+
+@Configuration public class DispatchingFunctions {
+private static final Logger log = LoggerFactory.getLogger(DispatchingFunctions.class);
+
+... @Bean
+
+Function implementing the order-labeling business logic
+
+public Function<Flux<Long>, Flux<OrderDispatchedMessage>> label() {
+
+return orderFlux -> orderFlux.map(orderId -> {
+
+log.info("The order with id {} is labeled.", orderId);
+
+return new OrderDispatchedMessage(orderId);
+
+}); } }
+
+Returns an OrderDispatchedMessage
+as output
+
+It takes an order identifier (Long) as input.
+
+We have just implemented both functions, so let's see how we can combine and use them.
+
+10.3.2 Composing and integrating functions: REST, serverless, data streams
+The implementation of the business logic for Dispatcher Service is almost done. We still need a way to compose the two functions. Based upon our requirements, dispatching an order consists of two steps to be executed in sequence: pack() first and label() after.
+Java provides features to compose Function objects in sequence using the andThen() or compose() operators. The problem is that you can use them only when the output type of the first function is the same as the second function's input. Spring Cloud Function provides a solution to that problem and lets you compose functions seamlessly through transparent type conversion, even between imperative and reactive functions like those we defined earlier.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+341
+
+Composing functions with Spring Cloud is as simple as defining a property in your application.yml (or application.properties) file. Open the application.yml file in your Dispatcher Service project, and configure Spring Cloud Function to manage and compose the pack() and label() functions as follows.
+
+Listing 10.9 Declaring the functions managed by Spring Cloud
+
+spring: cloud: function: definition: pack|label
+
+Definition of the function managed by Spring Cloud Function
+
+The spring.cloud.function.definition property lets you declare which functions you want Spring Cloud Function to manage and integrate, resulting in a specific data flow. In the previous section, we implemented the basic pack() and label() functions. Now we can instruct Spring Cloud Function to use them as building blocks and produce a new function that comes from the composition of those two.
+In a serverless application like those meant to be deployed on a FaaS platform (such as AWS Lambda, Azure Functions, Google Cloud Functions, or Knative), you would usually have one function defined per application. The cloud function definition can be mapped one-to-one to a function declared in your application, or you can use the pipe (|) operator to compose functions together in a data flow. If you need to define multiple functions, you can use the semicolon (;) character as the separator instead of the pipe (|).
+To sum up, you only need to implement standard Java functions, and you can then configure Spring Cloud Function to use them as they are or after combining them. The framework will do the rest, including transparently converting input and output types to make the composition possible. Figure 10.8 illustrates the function composition.
+
+Function composition (details)
+
+OrderAccepted Message
+
+Pack()
+
+Long
+
+Flux<Long>
+
+Label()
+
+Flux<Order Dispatched Message>
+
+Figure 10.8 You can combine functions with different input and output types and mix imperative and reactive types as well. Spring Cloud Function will transparently handle any type conversion.
+At this point you're probably wondering how you can use these functions. That's my favorite part. Once you define the functions, the framework can expose them in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+342
+
+CHAPTER 10 Event-driven applications and functions
+
+different ways depending on your needs. For example, Spring Cloud Function can automatically expose the functions defined in spring.cloud.function.definition as REST endpoints. Then you can directly package the application, deploy it on a FaaS platform like Knative, and voilà: you've got your first serverless Spring Boot application. That's what we'll do in chapter 16 when we build serverless applications. Or you can use one of the adapters provided by the framework to package the application and deploy it on AWS Lambda, Azure Functions, or Google Cloud Functions. Or you can combine it with Spring Cloud Stream and bind the function to message channels in an event broker like RabbitMQ or Kafka.
+Before we explore the integration with RabbitMQ using Spring Cloud Stream, I want to show you how to test the functions and their composition in isolation. Once the business logic is implemented as functions and tested, we can be sure it will work the same way, whether it's triggered by a REST endpoint or an event notification.
+10.3.3 Writing integration tests with @FunctionalSpringBootTest
+Using the functional programming paradigm, we can implement business logic in standard Java and write unit tests with JUnit without being affected by the framework. At that level there is no Spring code, just plain Java. Once you've ensured that each function works, you'll want to write some integration tests to verify your application's overall behavior when your functions are processed by Spring Cloud Function and exposed the way you configured.
+Spring Cloud Function provides a @FunctionalSpringBootTest annotation you can use to set up the context for your integration tests. Unlike unit tests, you don't want to invoke the function directly but rather ask the framework to provide that for you. All the functions managed by the framework are available through the FunctionCatalog, an object that acts as a function registry. When the framework serves the function, it doesn't only contain the implementation you wrote; it's enhanced with extra features offered by Spring Cloud Function, like transparent type conversion and function composition. Let's see how this works.
+First, you need to add a test dependency on Reactor Test in the build.gradle file, since part of the business logic is implemented using Reactor. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 10.10 Adding dependency for Reactor Test in Dispatcher Service
+dependencies { ... testImplementation 'io.projectreactor:reactor-test'
+}
+Then, in the src/test/java folder of your Dispatcher Service project, create a new DispatchingFunctionsIntegrationTests class. You can write integration tests for the two functions individually, but it's more interesting verifying the behavior of the composed function, pack() + label(), as provided by Spring Cloud Function.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.3 Functions with Spring Cloud Function
+
+343
+
+Listing 10.11 Integration tests for a function composition
+
+package com.polarbookshop.dispatcherservice;
+
+import java.util.function.Function; import org.junit.jupiter.api.Test; import reactor.core.publisher.Flux; import reactor.test.StepVerifier; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.cloud.function.context.FunctionCatalog; import org.springframework.cloud.function.context.test
+ .FunctionalSpringBootTest;
+
+@FunctionalSpringBootTest class DispatchingFunctionsIntegrationTests {
+
+@Autowired private FunctionCatalog catalog;
+
+@Test
+
+void packAndLabelOrder() {
+
+Function<OrderAcceptedMessage, Flux<OrderDispatchedMessage>>
+
+packAndLabel = catalog.lookup(
+
+Function.class, "pack|label");
+long orderId = 121;
+
+Gets the composed function from the FunctionCatalog
+
+Defines an OrderAcceptedMessage, which is the input to the function
+
+StepVerifier.create(packAndLabel.apply( new OrderAcceptedMessage(orderId)
+)) .expectNextMatches(dispatchedOrder ->
+
+Asserts that the output of the function is the expected OrderDispatchedMessage object
+
+dispatchedOrder.equals(new OrderDispatchedMessage(orderId)))
+
+.verifyComplete();
+
+}
+
+}
+
+Finally, open a Terminal window, navigate to the Dispatcher Service project root folder, and run the tests:
+$ ./gradlew test --tests DispatchingFunctionsIntegrationTests
+
+This type of integration test ensures the correct behavior of the defined cloud function, independently of how it will be exposed. In the source code accompanying the book, you'll find a broader set of autotests (Chapter10/10-intermediate/dispatcherservice).
+Functions are a simple yet effective way to implement business logic and delegate infrastructural concerns to the framework. In the next section you'll learn how to bind functions to message channels on RabbitMQ using Spring Cloud Stream.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+344
+
+CHAPTER 10 Event-driven applications and functions
+
+10.4
+
+Processing messages with Spring Cloud Stream
+The principles that drive the Spring Cloud Function framework can also be found in Spring Cloud Stream. The idea is that you, as a developer, are responsible for the business logic, while the framework handles infrastructural concerns like how to integrate a message broker.
+Spring Cloud Stream is a framework for building scalable, event-driven, and streaming applications. It's built on top of Spring Integration, which offers the communication layer with message brokers; Spring Boot, which provides auto-configuration for the middleware integration; and Spring Cloud Function, which produces, processes, and consumes events. Spring Cloud Stream relies on the native features of each message broker, but it also provides an abstraction to ensure a seamless experience independently of the underlying middleware. For example, features like consumer groups and partitions (native in Apache Kafka) are not present in RabbitMQ, but you can still use them thanks to the framework providing them for you.
+My favorite Spring Cloud Stream feature is that you can drop a dependency in a project like Dispatcher Service and get functions automatically bound to an external message broker. The best part of it? You don't have to change any code in the application, just the configuration in application.yml or application.properties. In previous versions of the framework, it was necessary to use dedicated annotations to match the business logic with the Spring Cloud Stream components. Now it's completely transparent.
+The framework supports integrations with RabbitMQ, Apache Kafka, Kafka Streams, and Amazon Kinesis. There are also integrations maintained by partners for Google PubSub, Solace PubSub+, Azure Event Hubs, and Apache RocketMQ.
+This section will cover how to expose the composed function we defined in Dispatcher Service through message channels in RabbitMQ.
+
+10.4.1 Configuring the integration with RabbitMQ
+Spring Cloud Stream is based on a few essential concepts:
+ Destination binder--The component providing the integration with external messaging systems, like RabbitMQ or Kafka
+ Destination binding--The bridge between the external messaging system entities, like queues and topics, and the application-provided producers and consumers
+ Message--The data structure used by the application producers and consumers to communicate with the destination binders, and therefore with the external messaging systems
+All three of these are handled by the framework itself. The core of your application, the business logic, is not aware of the external messaging system. Destination binders are responsible for letting the application communicate with the external message brokers, including any vendor-specific concerns. The bindings are auto-configured by the framework, but you can still provide your own configuration to adapt them to your
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+345
+
+needs, as we'll do for Dispatcher Service. Figure 10.9 shows a model of a Spring Boot application using Spring Cloud Stream.
+
+Spring Cloud Stream: Application model
+Spring Boot application Destination binder
+
+Kafka
+
+Destination binding
+
+Function
+
+Destination binding
+
+RabbitMQ
+
+Figure 10.9 In Spring Cloud Stream, a destination binder provides integration with external messaging systems and establishes message channels with them.
+Once you have defined the business logic of your application as functions, and you've configured Spring Cloud Function to manage them (like we did for Dispatcher Service), you can expose the functions through a message broker by adding a dependency on the Spring Cloud Stream binder project specific to the broker you want to use. I'll show you how to work with RabbitMQ both for input and output message channels, but you can also bind to multiple messaging systems within the same application. INTEGRATING RABBITMQ WITH SPRING First, open the build.gradle file for the Dispatcher Service project (dispatcher-service), and replace the Spring Cloud Function dependency with the RabbitMQ binder for Spring Cloud Stream. Since Spring Cloud Function is already included in Spring Cloud Stream, you don't need to add it explicitly. You can also remove the dependency on Spring Boot Starter, which is also included in the Spring Cloud Stream dependency. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 10.12 Updating dependencies in Dispatcher Service
+dependencies { implementation
+ 'org.springframework.cloud:spring-cloud-stream-binder-rabbit'
+testImplementation 'org.springframework.boot:spring-boot-starter-test' testImplementation 'io.projectreactor:reactor-test' }
+Licensed to Zhigang Li <lzg14@qq.com>
+
+346
+
+CHAPTER 10 Event-driven applications and functions
+
+Next, open the application.yml file and add the following configuration for the RabbitMQ integration. Port, username, and password are the same ones we previously defined in Docker Compose (listings 10.1 and 10.2).
+
+Listing 10.13 Configuring the RabbitMQ integration
+
+spring: rabbitmq: host: localhost port: 5672 username: user password: password connection-timeout: 5s
+
+That's it. If you run the Dispatcher Service, you'll notice it already works perfectly without further configuration. Spring Cloud Stream will auto-generate and configure the bindings to exchanges and queues in RabbitMQ.
+That's great for getting up and running quickly, but you will probably want to add your own configuration to customize the behavior for a production scenario. The following section will show you how to do that, again without changing any code in your business logic. How great is that?
+
+10.4.2 Binding functions to message channels
+Getting started with Spring Cloud Stream is straightforward, but there's a chance of confusing concepts with similar names. In the context of message brokers and Spring Cloud Stream, the term binding and its variations are used a lot and can lead to misunderstandings. Figure 10.10 shows all the entities in place.
+
+Destination binder
+
+Provides integration between the Spring Cloud Stream: Terminology
+
+application and external messaging
+
+systems
+
+Spring Boot application
+
+RabbitMQ
+
+Destination binder
+
+Exchange
+
+Queue Queue
+
+Destination binding (input)
+
+Function
+
+Destination binding (output)
+
+RabbitMQ
+
+Exchange
+
+Queue
+
+Queue
+
+Destination binding
+Bridge between application producers/consumers and the external messaging systems (exchanges/queues)
+Figure 10.10 In Spring Cloud Stream, bindings establish message channels between applications and message brokers.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+347
+
+Spring Cloud Stream provides a Spring Boot application with a destination binder that integrates with an external messaging system. The binder is also responsible for establishing communication channels between the application producers and consumers and the messaging system entities (exchanges and queues for RabbitMQ). These communication channels are called destination bindings, and they are bridges between applications and brokers.
+A destination binding can be either an input channel or an output channel. By default, Spring Cloud Stream maps each binding (both input and output) to an exchange in RabbitMQ (a topic exchange, to be more precise). Furthermore, for each input binding, it binds a queue to the related exchange. That's the queue from which consumers receive and process events. This setup provides all the plumbing for implementing event-driven architectures based on the pub/sub model.
+In the following sections, I'll tell you more about destination bindings in Spring Cloud Stream and how they relate to exchanges and queues in RabbitMQ.
+UNDERSTANDING DESTINATION BINDINGS As you can see in figure 10.10, destination bindings are an abstraction representing a bridge between application and broker. When using the functional programming model, Spring Cloud Stream generates an input binding for each function accepting input data, and an output binding for each function returning output data. Each binding is assigned a logical name following this convention:
+ Input binding: <functionName> + -in- + <index>  Output binding: <functionName> + -out- + <index>
+Unless you use partitions (for example, with Kafka), the <index> part of the name will always be 0. The <functionName> is computed from the value of the spring.cloud .function.definition property. In case of a single function, there is a one-to-one mapping. For example, if in Dispatcher Service we only had one function called dispatch, the related binding would be named dispatch-in-0 and dispatch-out-0. We actually used a composed function (pack|label), so the binding names are generated by combining the names of all the functions involved in the composition:
+ Input binding: packlabel-in-0  Output binding: packlabel-out-0
+These names are only relevant for configuring the bindings themselves in the application. They're like unique identifiers that let you reference a specific binding and apply custom configuration. Notice that these names exist only in Spring Cloud Stream-- they're logical names. RabbitMQ doesn't know about them.
+CONFIGURING DESTINATION BINDINGS By default, Spring Cloud Stream uses the binding names to generate the names for exchanges and queues in RabbitMQ, but in a production scenario you'd probably want to manage them explicitly for several reasons. For example, it's likely that both
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+348
+
+CHAPTER 10 Event-driven applications and functions
+
+exchanges and queues already exist in production. You will also want to control different options for exchanges and queues, like durability or routing algorithms.
+For Dispatcher Service, I'll show you how to configure input and output bindings. At startup, Spring Cloud Stream will check if the related exchanges and queues already exist in RabbitMQ. If they don't, it will create them according to your configuration.
+Let's start by defining the destination names that will be used to name exchanges and queues in RabbitMQ. In your Dispatcher Service project, update the application.yml file as follows.
+
+Listing 10.14 Configuring Cloud Stream bindings and RabbitMQ destinations
+
+spring: cloud:
+
+Section for configuring destination bindings
+
+function:
+
+definition: pack|label
+
+The input binding
+
+stream: bindings: packlabel-in-0:
+
+The output binding
+
+destination: order-accepted group: ${spring.application.name} packlabel-out-0:
+
+destination: order-dispatched
+
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+The consumer group interested in the destination (same as the application name)
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+The output binding (packlabel-out-0) will be mapped to an order-dispatched exchange in RabbitMQ. The input binding (packlabel-in-0) will be mapped to an order-accepted exchange and an order-accepted.dispatcher-service queue in RabbitMQ. If they don't exist already in RabbitMQ, the binder will create them. The queue-naming strategy (<destination>.<group>) includes a parameter called consumer group.
+The idea of consumer groups has been borrowed from Kafka and is very useful. In a standard pub/sub model, all consumers receive a copy of the messages sent to the queues they're subscribed to. That is convenient when different applications need to process the messages. But in a cloud native context, where multiple instances of an application are running simultaneously for scaling and resilience, that would be a problem. If you have numerous Dispatcher Service instances, you don't want an order to be dispatched from all of them. That would lead to errors and an inconsistent state.
+Consumer groups solve the problem. All consumers in the same group share a single subscription. As a consequence, each message arriving at the queue to which they're subscribed will be processed by one consumer only. Assume we have two applications (Dispatcher Service and Mail Service) interested in receiving events about accepted orders and deployed in a replicated fashion. Using the application name to configure consumer groups, we can ensure that each event is received and processed by a single instance of Dispatcher Service and a single instance of Mail Service, as shown in figure 10.11.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+349
+
+Consumer groups with Spring Cloud Stream and RabbitMQ
+
+Exchange order-accepted
+
+RabbitMQ Queue
+order-accepted.dispatcher-service
+Queue order-accepted.mail-service
+
+Consumer group
+
+Dispatcher service
+
+Dispatcher service
+
+Consumer group
+
+Mail service
+
+Mail service
+
+Figure 10.11 Consumer groups ensure that each message is received and processed by only one consumer within the same group.
+EXPLORING EXCHANGES AND QUEUES IN RABBITMQ After configuring the integration with RabbitMQ through Spring Cloud Stream, it's time to try running Dispatcher Service.
+First, start a RabbitMQ container. Open a Terminal window, navigate to the folder in your polar-deployment repository where you keep your docker-compose.yml file (polar-deployment/docker), and run the following command:
+$ docker-compose up -d polar-rabbitmq
+Then open another Terminal window, navigate to the Dispatcher Service project's root folder (dispatcher-service), and run the application as follows:
+$ ./gradlew bootRun
+The application logs will already give you a hint of what happened, but for a clearer understanding, let's check the RabbitMQ management console (exposed through port 15672).
+Open a browser window and navigate to http://localhost:15672. The credentials are the same that we defined in Docker Compose (user/password). Then go to the Exchanges section. Figure 10.12 shows a list of default exchanges provided by RabbitMQ and the two exchanges generated by our application: order-accepted and order-dispatched. Spring Cloud Stream maps them to the packlabel-in-0 and packlabel-out-0 bindings respectively. The exchanges are durable (denoted by the D icon in the management console), meaning that they will survive a broker restart.
+Next, let's take a look at the queues. In Dispatcher Service we configured a packlabel-in-0 binding and a consumer group. That's the only input channel for the application, so it should result in a single queue. Let's verify that. In the RabbitMQ management console, as illustrated in figure 10.13, you can see a durable orderaccepted.dispatcher-service queue in the Queues section.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+350
+
+CHAPTER 10 Event-driven applications and functions
+
+Figure 10.12 Spring Cloud Stream maps the two destination binding to two exchanges in RabbitMQ.
+Figure 10.13 Spring Cloud Stream maps each input binding to a queue, named according to the configured consumer group.
+NOTE No queue has been created for the packlabel-out-0 binding because no consumer subscribed to it. Later you'll see that a queue will be created after configuring Order Service to listen to it. We can verify that the integration works by manually sending a message to the orderaccepted exchange. If everything is configured correctly, Dispatcher Service will read the message from the order-accepted.dispatcher-service queue, process it through
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+351
+
+the composed function pack|label, and finally send it to the order-dispatched exchange.
+Go to the Exchanges section again, select the order-accepted exchange, and in the Publish Message panel, insert an OrderAcceptedMessage object in JSON format, as shown in figure 10.14. When you're done, click the Publish Message button.
+
+Figure 10.14 You can trigger the data flow in Dispatcher Service by sending a message to the order-accepted exchange.
+In the application logs, you should see the following messages signaling that the data flow happened correctly:
+...c.p.d.DispatchingFunctions: The order with id 394 is packed. ...c.p.d.DispatchingFunctions: The order with id 394 is labeled.
+The output message has been sent to the order-dispatched exchange, but it has not been routed to any queue because no consumer has subscribed. In the final part of this chapter, we'll complete the flow by defining a supplier in Order Service to publish messages to the order-accepted exchange whenever an order is accepted, and a consumer to read messages from the order-dispatched queue whenever an order is dispatched. But first, let's add some tests to verify the integration with the Spring Cloud Stream binder.
+Before moving on, stop the application process with Ctrl-C and the RabbitMQ container with docker-compose down.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+352
+
+CHAPTER 10 Event-driven applications and functions
+
+10.4.3 Writing integration tests with a test binder
+As I have stressed several times, Spring Cloud Function and Spring Cloud Stream's whole philosophy is about keeping the application's business logic infrastructure--and middleware--neutral. After defining the original pack() and label() functions, all we did was update dependencies in Gradle and modify the configuration in application.yml.
+It's a good idea to have unit tests covering the business logic, independent of the framework. But it's worth adding a few integration tests to cover the application's behavior in a Spring Cloud Stream context. You should disable the integration tests you wrote earlier in the DispatchingFunctionsIntegrationTests class, since now you'll want to test the integration with the external messaging system.
+The framework provides a binder specifically for implementing integration tests focusing on the business logic rather than the middleware. Let's see how it works, using Dispatcher Service as an example.
+NOTE The test binder provided by Spring Cloud Stream is meant to verify the correct configuration and integration with a technology-agnostic destination binder. If you want to test the application against a specific broker (in our case, it would be for RabbitMQ), you can rely on Testcontainers, as you learned in the previous chapter. I'll leave that up to you as an exercise.
+First, add a dependency to the test binder in the build.gradle file of your Dispatcher Service project. Unlike the other dependencies we've been working on so far, the test binder requires a more elaborate syntax to be included. For more information, refer to the Spring Cloud Stream documentation (https://spring.io/projects/spring-cloud-stream). Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 10.15 Adding a dependency for the test binder in Dispatcher Service
+dependencies { ... testImplementation("org.springframework.cloud:spring-cloud-stream") { artifact { name = "spring-cloud-stream" extension = "jar" type ="test-jar" classifier = "test-binder" } }
+}
+Next, create a new FunctionsStreamIntegrationTests class for testing. The test setup consists of three steps:
+1 Import the TestChannelBinderConfiguration class providing configuration for the test binder.
+2 Inject an InputDestination bean representing the input binding packlabelin-0 (by default, since it's the only one).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.4 Processing messages with Spring Cloud Stream
+
+353
+
+3 Inject an OutputDestination bean representing the output binding packlabelout-0 (by default, since it's the only one).
+The data flow is based on Message objects (from the org.springframework.messaging package). The framework handles type conversion for you transparently when running the application. However, in this type of test, you need to provide Message objects explicitly. You can use MessageBuilder to create the input message, and use the ObjectMapper utility to perform the type conversion from the binary format used for storing message payloads in a broker.
+
+Listing 10.16 Testing the integration with external messaging systems
+
+package com.polarbookshop.dispatcherservice;
+
+Sends a message to
+the input channel
+
+import java.io.IOException; import com.fasterxml.jackson.databind.ObjectMapper; import org.junit.jupiter.api.Test; import org.springframework.beans.factory.annotation.Autowired; import org.springframework.boot.test.context.SpringBootTest; import org.springframework.cloud.stream.binder.test.InputDestination; import org.springframework.cloud.stream.binder.test.OutputDestination; import org.springframework.cloud.stream.binder.test.
+TestChannelBinderConfiguration;
+import org.springframework.context.annotation.Import; import org.springframework.integration.support.MessageBuilder; import org.springframework.messaging.Message; import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest @Import(TestChannelBinderConfiguration.class)
+
+Configures the test binder
+
+class FunctionsStreamIntegrationTests {
+@Autowired private InputDestination input;
+
+Represents the input binding packlabel-in-0
+
+@Autowired private OutputDestination output;
+
+Represents the output binding packlabel-out-0
+
+@Autowired private ObjectMapper objectMapper;
+
+Uses Jackson to deserialize JSON message payloads to Java objects
+
+@Test
+
+void whenOrderAcceptedThenDispatched() throws IOException {
+
+long orderId = 121;
+
+Message<OrderAcceptedMessage> inputMessage = MessageBuilder
+
+.withPayload(new OrderAcceptedMessage(orderId)).build();
+
+Message<OrderDispatchedMessage> expectedOutputMessage = MessageBuilder
+
+.withPayload(new OrderDispatchedMessage(orderId)).build();
+
+this.input.send(inputMessage);
+
+assertThat(objectMapper.readValue(output.receive().getPayload(),
+
+OrderDispatchedMessage.class))
+
+.isEqualTo(expectedOutputMessage.getPayload()); } }
+
+Receives and asserts a message from the output channel
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+354
+
+CHAPTER 10 Event-driven applications and functions
+
+WARNING If you use IntelliJ IDEA, you might get a warning that InputDestination, OutputDestination, and ObjectMapper cannot be autowired. Don't worry. It's a false positive. You can get rid of the warning by annotating the field with @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection").
+Message brokers like RabbitMQ deal with binary data, so any data flowing through them is mapped to byte[] in Java. The conversion between bytes and DTOs is handled by Spring Cloud Stream transparently. But just like for messages, we need to handle that explicitly in this test scenario when asserting the content of the message received from the output channel.
+After writing the integration tests, open a Terminal window, navigate to the Dispatcher Service project's root folder, and run the tests:
+$ ./gradlew test --tests FunctionsStreamIntegrationTests
+The next section will go through some points to consider regarding resilient integrations with messaging systems.
+10.4.4 Making messaging resilient to failures
+Event-driven architectures solve some issues affecting synchronous request/response interactions. For example, if you remove the temporal coupling between applications, you won't need to adopt patterns like circuit breakers, since the communication will be asynchronous. If the consumer is momentarily unavailable while the producer sends a message, it doesn't matter. The consumer will receive the message once it's up and running again.
+In software engineering, there are no silver bullets. Everything comes at a cost. On the one hand, applications that are decoupled can operate more independently. On the other hand, you introduced a new component in your system that needs to be deployed and maintained: the message broker.
+Assuming that part is taken care of by the platform, there's still something for you to do as the application developer. When an event happens and your application wants to publish a message, something might go wrong. Retries and timeouts are still helpful, but this time we'll use them to make the interaction between application and broker more resilient. Spring Cloud Stream uses the retry pattern with an exponential backoff strategy by default, relying on the Spring Retry library for imperative consumers and the retryWhen() Reactor operator for reactive consumers (the one you learned about in chapter 8). As usual, you can customize it via configuration properties.
+Spring Cloud Stream defines several defaults to make the interaction more resilient, including error channels and graceful shutdown. You can configure different aspects of message processing, including dead-letter queues, acknowledgment flows, and republishing messages on error.
+RabbitMQ itself has several features in place to improve reliability and resilience. Among other things, it guarantees that each message is delivered at least once. Be
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+355
+
+aware that consumers in your applications might receive the same message twice, so your business logic should know how to identify and handle duplicates.
+I won't go further into the details, since this is an extensive subject that would require several dedicated chapters to cover it adequately. Instead, I encourage you to read the documentation for the different projects involved in your event-driven architecture: RabbitMQ (https://rabbitmq.com), Spring AMQP (https://spring.io/projects/ spring-amqp), and Spring Cloud Stream (https://spring.io/projects/spring-cloud -stream). You can also check out the event-driven patterns described in Sam Newman's Building Microservices (O'Reilly, 2021) and Chris Richardson's Microservices Patterns (Manning, 2018).
+In the last part of the chapter, you'll work with suppliers and consumers and complete the order flow for the Polar Bookshop system.
+
+10.5
+
+Producing and consuming messages with Spring Cloud Stream
+In previous sections, you learned about the functional programming paradigm and how it fits in the Spring ecosystem, using Spring Cloud Function and Spring Cloud Stream. This last section will guide you through the implementation of producers and consumers.
+As you'll see, consumers are not that different from the functions you wrote in Dispatcher Service. On the other hand, producers are slightly different because, unlike functions and consumers, they are not naturally activated. I'll show you how to use them both in Order Service while implementing the last part of the order flow for the Polar Bookshop system.
+
+10.5.1 Implementing event consumers, and the problem of idempotency
+The Dispatcher Service application we previously built produces messages when orders are dispatched. The Order Service should be notified when that happens so that it can update the order status in the database.
+First, open your Order Service project (order-service), and add the dependencies on Spring Cloud Stream and the test binder in the build.gradle file. Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 10.17 Adding dependency for Spring Cloud Stream and test binder
+
+dependencies { ... implementation 'org.springframework.cloud:
+ spring-cloud-stream-binder-rabbit'
+testImplementation("org.springframework.cloud:spring-cloud-stream") { artifact { name = "spring-cloud-stream" extension = "jar" type ="test-jar" classifier = "test-binder"
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+356
+
+CHAPTER 10 Event-driven applications and functions
+
+} } }
+
+Next we need to model the event we'd like Order Service to listen to. Create a new com.polarbookshop.orderservice.order.event package, and add an OrderDispatchedMessage class to hold the identifier for a dispatched order.
+
+Listing 10.18 A DTO representing the event about orders being dispatched
+package com.polarbookshop.orderservice.order.event;
+
+public record OrderDispatchedMessage ( Long orderId
+){}
+
+Now we'll implement the business logic using a functional approach. Create an OrderFunctions class (com.polarbookshop.orderservice.order.event package), and implement a function to consume the messages produced by the Dispatcher Service application when an order is dispatched. The function will be a Consumer responsible for listening to the incoming messages and updating the database entities accordingly. Consumer objects are functions with input but no output. To keep the function clean and readable, we'll move the processing of OrderDispatchedMessage objects to the OrderService class (which we'll implement in a minute).
+
+Listing 10.19 Consuming messages from RabbitMQ
+package com.polarbookshop.orderservice.order.event;
+
+import java.util.function.Consumer; import com.polarbookshop.orderservice.order.domain.OrderService; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import reactor.core.publisher.Flux; import org.springframework.context.annotation.Bean; import org.springframework.context.annotation.Configuration;
+
+@Configuration public class OrderFunctions {
+
+private static final Logger log = LoggerFactory.getLogger(OrderFunctions.class);
+
+For each order
+updated in the database,
+it logs a message.
+
+@Bean
+
+public Consumer<Flux<OrderDispatchedMessage>> dispatchOrder( OrderService orderService
+){ return flux -> orderService.consumeOrderDispatchedEvent(flux)
+
+For each dispatched message, it updates the related order in the database.
+
+.doOnNext(order -> log.info("The order with id {} is dispatched",
+
+order.id()))
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+357
+
+.subscribe(); } }
+
+Subscribes to the reactive stream in order to activate it. Without a subscriber, no data flows through the stream.
+
+Order Service is a reactive application, so the dispatchOrder function will consume messages as a reactive stream (a Flux of OrderDispatchedMessage). Reactive streams are activated only if there's a subscriber interested in receiving the data. For that reason, it's critical that we end the reactive stream by subscribing to it, or else no data will ever be processed. In previous examples, the subscription part was handled transparently by the framework (for example, when using reactive streams to return data via a REST endpoint or to send data to a backing service). In this case, we have to explicitly do that with the subscribe() clause.
+Next, let's implement the consumeOrderDispatchedMessageEvent() method in the OrderService class to update the status in the database for an existing order after it's dispatched.
+
+Listing 10.20 Implementing the logic for updating an order as dispatched
+
+Accepts a reactive stream of OrderDispatchedMessage objects as input
+
+@Service public class OrderService {
+...
+public Flux<Order> consumeOrderDispatchedEvent(
+
+For each object emitted to the stream, it reads the related order from the database.
+
+Flux<OrderDispatchedMessage> flux ){
+return flux .flatMap(message -> orderRepository.findById(message.orderId()))
+
+Updates the order with the "dispatched" status
+
+.map(this::buildDispatchedOrder)
+
+.flatMap(orderRepository::save); }
+
+Saves the updated order in the database
+
+private Order buildDispatchedOrder(Order existingOrder) {
+
+return new Order( existingOrder.id(), existingOrder.bookIsbn(), existingOrder.bookName(),
+
+Given an order, it returns a new record with the "dispatched" status.
+
+existingOrder.bookPrice(),
+
+existingOrder.quantity(),
+
+OrderStatus.DISPATCHED,
+
+existingOrder.createdDate(),
+
+existingOrder.lastModifiedDate(),
+
+existingOrder.version()
+
+);
+
+}
+
+}
+
+Consumers are triggered by a message arriving in the queue. RabbitMQ provides an at-least-one delivered guarantee, so you need to be aware of possible duplicates. The
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+358
+
+CHAPTER 10 Event-driven applications and functions
+
+code we implemented updates the status of the specific order to be DISPATCHED, an operation that can be executed several times with the same result. Since the operation is idempotent, the code is resilient to duplicates. A further optimization would be to check for the status and skip the update operation if it's already dispatched.
+Finally, we need to configure Spring Cloud Stream in the application.yml file so that the dispatchOrder-in-0 binding (inferred from the dispatchOrder function name) is mapped to the order-dispatched exchange in RabbitMQ. Also, remember to define dispatchOrder as the function that Spring Cloud Function should manage, and the integration with RabbitMQ.
+
+Listing 10.21 Configuring Cloud Stream bindings and RabbitMQ integration
+
+spring: cloud: function: definition: dispatchOrder
+
+Definition of the function managed by Spring Cloud Function
+
+The input binding
+
+stream: bindings: dispatchOrder-in-0: destination: order-dispatched
+
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+group: {spring.application.name}
+
+rabbitmq: host: localhost port: 5672 username: user
+
+Configures the integrations with RabbitMQ
+
+password: password
+
+The consumer group interested in the destination (the same as the application name)
+
+connection-timeout: 5s
+
+As you can see, it works the same way as the functions in Dispatcher Service. The consumers in Order Service will be part of the order-service consumer group, and Spring Cloud Stream will define a message channel between them and an order-dispatched .order-service queue in RabbitMQ.
+Next, we'll complete the order flow by defining a supplier responsible for triggering the whole procedure.
+
+10.5.2 Implementing event producers, and the problem of atomicity
+Suppliers are message sources. They produce messages when an event happens. In Order Service, a supplier should notify the interested parties (in this case, Dispatcher Service) whenever an order has been accepted. Unlike functions and consumers, suppliers need to be activated. They act only upon invocation.
+Spring Cloud Stream provides a few ways to define suppliers and cover different scenarios. In our case, the event source is not a message broker, but a REST endpoint. When a user sends a POST request to Order Service for purchasing a book, we want to publish an event signaling whether the order has been accepted.
+Let's start by modeling that event as a DTO. It will be the same as the OrderAcceptedMessage record we used in Dispatcher Service. Add the record to the com.polarbookshop.orderservice.order.event package in your Order Service project (order-service).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+359
+
+Listing 10.22 A DTO representing the event about orders being accepted
+package com.polarbookshop.orderservice.order.event;
+
+public record OrderAcceptedMessage ( Long orderId
+){}
+
+We can bridge the REST layer with the stream part of the application using a StreamBridge object that allows us to send data to a specific destination imperatively. Let's break this new functionality down. First, we can implement a method that accepts an Order object as input, verifies it's accepted, builds an OrderAcceptedMessage object, and sends it to a RabbitMQ destination using StreamBridge.
+Open the OrderService class, autowire a StreamBridge object, and define a new publishOrderAcceptedEvent method.
+
+Listing 10.23 Implementing the logic for publishing events to a destination
+package com.polarbookshop.orderservice.order.domain;
+import com.polarbookshop.orderservice.book.BookClient; import com.polarbookshop.orderservice.order.event.OrderAcceptedMessage; import org.slf4j.Logger; import org.slf4j.LoggerFactory; import org.springframework.cloud.stream.function.StreamBridge; import org.springframework.stereotype.Service; ...
+
+@Service public class OrderService {
+private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+private final BookClient bookClient; private final OrderRepository orderRepository; private final StreamBridge streamBridge;
+
+public OrderService(BookClient bookClient, StreamBridge streamBridge, OrderRepository orderRepository
+){ this.bookClient = bookClient; this.orderRepository = orderRepository; this.streamBridge = streamBridge;
+}
+
+...
+
+If the order is not accepted, it does nothing.
+
+private void publishOrderAcceptedEvent(Order order) {
+
+if (!order.status().equals(OrderStatus.ACCEPTED)) {
+
+return; } var orderAcceptedMessage =
+new OrderAcceptedMessage(order.id());
+
+Builds a message to notify that an order has been accepted
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+360
+
+CHAPTER 10 Event-driven applications and functions
+
+log.info("Sending order accepted event with id: {}", order.id());
+
+var result = streamBridge.send("acceptOrder-out-0",
+
+orderAcceptedMessage);
+
+log.info("Result of sending data for order with id {}: {}",
+
+order.id(), result); } }
+
+Explicitly sends a message to the acceptOrder-out-0 binding
+
+Since the data source is a REST endpoint, there is no Supplier bean we can register with Spring Cloud Function, and therefore there is no trigger for the framework to create the necessary bindings with RabbitMQ. Yet, in listing 10.23, StreamBridge is used to send data to an acceptOrder-out-0 binding. Where does it come from? There is no acceptOrder function!
+At startup time, Spring Cloud Stream will notice that StreamBridge wants to publish messages via an acceptOrder-out-0 binding, and it will create one automatically. Similar to the bindings created from functions, we can configure the destination name in RabbitMQ. Open the application.yml file and configure the binding as follows.
+
+Listing 10.24 Configuring Cloud Stream output binding
+
+spring: cloud: function: definition: dispatchOrder stream: bindings: dispatchOrder-in-0: destination: order-dispatched group: ${spring.application.name} acceptOrder-out-0: destination: order-accepted
+
+Output binding created and managed by StreamBridge
+The actual name at the broker that the binder binds to (the exchange in RabbitMQ)
+
+All that's left now is calling the method whenever a submitted order is accepted. That's a critical point and one of the aspects characterizing the saga pattern, a popular alternative to distributed transactions in microservice architectures. To ensure consistency in your system, persisting an order in the database and sending a message about it must be done atomically. Either both operations succeed, or they both must fail. A simple yet effective way to ensure atomicity is by wrapping the two operations in a local transaction. To do that, we can rely on the built-in Spring transaction management functionality.
+NOTE The saga pattern is described extensively in chapter 4 of Chris Richardson's book, Microservices Patterns (Manning, 2018; https://livebook.manning.com/ book/microservices-patterns/chapter-4). I recommend you check it out if you're interested in designing business transactions that span multiple applications.
+In the OrderService class, modify the submitOrder() method to call the publishOrderAcceptedEvent method, and annotate it with @Transactional.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10.5 Producing and consuming messages with Spring Cloud Stream
+
+361
+
+Listing 10.25 Defining a saga transaction with database and event broker
+
+@Service
+
+public class OrderService {
+
+... @Transactional
+
+Executes the method in a local transaction
+
+public Mono<Order> submitOrder(String isbn, int quantity) {
+
+return bookClient.getBookByIsbn(isbn)
+
+.map(book -> buildAcceptedOrder(book, quantity)) .defaultIfEmpty(buildRejectedOrder(isbn, quantity)) .flatMap(orderRepository::save)
+
+Saves the order in the database
+
+.doOnNext(this::publishOrderAcceptedEvent); }
+private void publishOrderAcceptedEvent(Order order) {
+
+Publishes an event if the order is accepted
+
+if (!order.status().equals(OrderStatus.ACCEPTED)) {
+
+return;
+
+}
+
+var orderAcceptedMessage = new OrderAcceptedMessage(order.id());
+
+log.info("Sending order accepted event with id: {}", order.id());
+
+var result = streamBridge.send("acceptOrder-out-0",
+
+orderAcceptedMessage);
+
+log.info("Result of sending data for order with id {}: {}",
+
+order.id(), result);
+
+}
+
+}
+
+Spring Boot comes preconfigured with transaction management functionality and can handle transactional operations involving relational databases (as you learned in chapter 5). However, the channel established with RabbitMQ for the message producer is not transactional by default. To make the event-publishing operation join the existing transaction, we need to enable RabbitMQ's transactional support for the message producer in the application.yml file.
+
+Listing 10.26 Configuring the output binding to be transactional
+
+spring:
+
+cloud:
+
+function:
+
+definition: dispatchOrder
+
+stream:
+
+bindings:
+
+dispatchOrder-in-0:
+
+destination: order-dispatched
+
+group: ${spring.application.name} acceptOrder-out-0:
+destination: order-accepted rabbit:
+
+RabbitMQ-specific configuration for the Spring Cloud Stream bindings
+
+bindings: acceptOrder-out-0: producer: transacted: true
+
+Makes the acceptOrder-out-0 binding transactional
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+362
+
+CHAPTER 10 Event-driven applications and functions
+
+Now you can write new integration tests for the supplier and the consumer, like we did for the functions in Dispatcher Service. I'll leave the autotests to you, since you have the necessary tools now. If you need inspiration, check out the source code accompanying this book (Chapter10/10-end/order-service).
+You will also need to import the configuration for the test binder (@Import(TestChannelBinderConfiguration.class)) in the existing OrderServiceApplicationTests class to make it work.
+We've had a nice journey through event-driven models, functions, and messaging systems. Before wrapping up, let's look at the order flow in action. First, start RabbitMQ, PostgreSQL (docker-compose up -d polar-rabbitmq polar-postgres), and Dispatcher Service (./gradlew bootRun). Then run Catalog Service and Order Service (./gradlew bootRun or from Docker Compose after building the images first).
+Once all those services are up and running, add a new book to the catalog:
+$ http POST :9001/books author="Jon Snow" \ title="All I don't know about the Arctic" isbn="1234567897" \ price=9.90 publisher="Polarsophia"
+
+Then order three copies of that book:
+$ http POST :9002/orders isbn=1234567897 quantity=3
+If you order a book that exists, the order will be accepted, and Order Service will publish an OrderAcceptedEvent message. Dispatcher Service, subscribed to that same event, will process the order and publish an OrderDispatchedEvent message. Order Service will be notified and update the order status in the database.
+TIP You can follow the message flow by checking the application logs from Order Service and Dispatcher Service.
+Now the moment of the truth. Fetch the order from Order Service:
+$ http :9002/orders
+The status should be DISPATCHED:
+{ "bookIsbn": "1234567897", "bookName": "All I don't know about the Arctic - Jon Snow", "bookPrice": 9.9, "createdDate": "2022-06-06T19:40:33.426610Z", "id": 1, "lastModifiedDate": "2022-06-06T19:40:33.866588Z", "quantity": 3, "status": "DISPATCHED", "version": 2
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+363
+
+And it is. Great job! When you're done testing the system, stop all the applications (Ctrl-C) and Docker containers (docker-compose down).
+That concludes the main implementation of the business logic for the Polar Bookshop system. The next chapter will cover security for cloud native applications using Spring Security, OAuth 2.1, and OpenID Connect.
+
+Polar Labs
+Feel free to apply what you've learned in the previous chapters and prepare the Dispatcher Service application for deployment.
+1 Add Spring Cloud Config Client to Dispatcher Service to make it fetch configuration data from Config Service.
+2 Configure the Cloud Native Buildpacks integration, containerize the application, and define the commit stage of the deployment pipeline.
+3 Write the Deployment and Service manifests for deploying Dispatcher Service to a Kubernetes cluster.
+4 Configure Tilt to automate the Dispatcher Service's deployment to your local Kubernetes cluster initialized with minikube.
+Then update the Docker Compose specification and the Kubernetes manifests to configure the RabbitMQ integration for Order Service.
+You can refer to the Chapter10/10-end folder in the code repository accompanying the book to check on the final result (https://github.com/ThomasVitale/cloud-nativespring-in-action). Deploy the backing services from the manifests, available in the Chapter10/10-end/polar-deployment/kubernetes/platform/development folder, with kubectl apply -f services.
+
+Summary
+ Event-driven architectures are distributed systems that interact with each other by producing and consuming events.
+ An event is something relevant that happened in a system.  In the pub/sub model, producers publish events, which are sent to all subscrib-
+ers to be consumed.  Event processing platforms like RabbitMQ and Kafka are responsible for col-
+lecting events from the producers, routing, and distributing them to the interested consumers.  In the AMQP protocol, producers send messages to an exchange in a broker that forwards them to queues according to specific routing algorithms.  In the AMQP protocol, consumers receive messages from the queues in the broker.  In the AMQP protocol, messages are data structures composed of key/value attributes and a binary payload.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+364
+
+CHAPTER 10 Event-driven applications and functions
+
+ RabbitMQ is a message broker based on the AMQP protocol that you can use to implement event-driven architectures based on the pub/sub model.
+ RabbitMQ provides high availability, resilience, and data replication.  Spring Cloud Function enables you to implement your business logic using the
+standard Java Function, Supplier, and Consumer interfaces.  Spring Cloud Function wraps your function and provides several exciting fea-
+tures like transparent type conversion and function composition.  Functions implemented in the context of Spring Cloud Function can be exposed
+and integrated with external systems in different ways.  Functions can be exposed as REST endpoints, packaged, and deployed in a
+FaaS platform as serverless applications (Knative, AWS Lambda, Azure Function, Google Cloud Functions), or they can be bound to message channels.  Spring Cloud Stream, built on top of Spring Cloud Function, provides you with all the necessary plumbing to integrate your functions with external messaging systems like RabbitMQ or Kafka.  Once you implement your functions, you don't have to make any changes to your code. You only need to add a dependency on Spring Cloud Stream and configure it to adapt to your needs.  In Spring Cloud Stream, destination binders provide integration with external messaging systems.  In Spring Cloud Stream, destination bindings (input and output) bridge the producers and consumers in your applications with exchanges and queues in a message broker like RabbitMQ.  Functions and consumers are activated automatically when new messages arrive.  Suppliers need to be explicitly activated, such as by explicitly sending a message to a destination binding.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Security: Authentication and SPA
+This chapter covers
+ Understanding the Spring Security fundamentals  Managing user accounts with Keycloak  Working with OpenID Connect, JWT, and Keycloak  Authenticating users with Spring Security and
+OpenID Connect  Testing Spring Security and OpenID Connect
+Security is one of the most critical aspects of web applications and probably the one with the most catastrophic effects when done wrong. For educational purposes, I'm introducing this topic only now. In a real-world scenario, I recommend considering security from the beginning of each new project or feature and never letting it go until the application is retired.
+Access control systems allow users access to resources only when their identity has been proven and they have the required permissions. To accomplish that, we need to follow three pivotal steps: identification, authentication, and authorization.
+1 Identification happens when a user (human or machine) claims an identity. In the physical world, that's when I introduce myself by stating my name. In the digital world, I would do that by providing my username or email address.
+365
+Licensed to Zhigang Li <lzg14@qq.com>
+
+366
+
+CHAPTER 11 Security: Authentication and SPA
+
+2 Authentication is about verifying the user's claimed identity through factors like a passport, a driver's license, a password, a certificate, or a token. When multiple factors are used to verify the user's identity, we talk about multi-factor authentication.
+3 Authorization always happens after authentication, and it checks what the user is allowed to do in a given context.
+This chapter and the next one will cover implementing access control systems in cloud native applications. You'll see how to add authentication to a system like Polar Bookshop and use a dedicated identity and access management solution like Keycloak. I'll show you how to use Spring Security to secure applications and adopt standards like JWT, OAuth2, and OpenID Connect. In the process, you'll also add an Angular frontend to the system and learn the best practices for security when a singlepage application (SPA) is involved.
+NOTE The source code for the examples in this chapter is available in the Chapter11/11-begin and Chapter11/11-end folders, which contain the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+
+11.1
+
+Understanding the Spring Security fundamentals
+Spring Security (https://spring.io/projects/spring-security) is the de facto standard for securing Spring applications, supporting imperative and reactive stacks. It provides authentication and authorization features as well as protection against the most common attacks.
+The framework provides its main functionality by relying on filters. Let's consider a possible requirement for adding authentication to a Spring Boot application. Users should be able to authenticate with their username and password through a login form. When we configure Spring Security to enable such a feature, the framework adds a filter that intercepts any incoming HTTP request. If the user is already authenticated, it sends the request through to be processed by a given web handler, such as a @RestController class. If the user is not authenticated, it forwards the user to a login page and prompts for their username and password.
+
+NOTE In imperative Spring applications, a filter is implemented as a Servlet Filter class. In reactive applications, the WebFilter class is used.
+
+Most Spring Security features, when enabled, are handled via filters. The framework establishes a chain of filters that are executed according to a well-defined and sensible order. For instance, the filter that handles authentication runs before the one that checks for authorization because we can't verify a user's authority before knowing who it is.
+Let's start with a basic example to better understand how Spring Security works. We want to add authentication to the Polar Bookshop system. Since Edge Service is
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.1 Understanding the Spring Security fundamentals
+
+367
+
+the entry point, it makes sense to handle cross-cutting concerns like security there. Users should be able to authenticate with a username and password via a login form.
+First, add a new dependency on Spring Security in the build.gradle file for the Edge Service project (edge-service). Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 11.1 Adding dependency for Spring Security in Edge Service
+dependencies { ... implementation 'org.springframework.boot:spring-boot-starter-security'
+}
+
+The central place for defining and configuring security policies in Spring Security is a SecurityWebFilterChain bean. That object tells the framework which filters should be enabled. You can build a SecurityWebFilterChain bean through the DSL provided by ServerHttpSecurity.
+For now, we want to comply with the following requirements:
+
+ All endpoints exposed by Edge Service must require user authentication.  The authentication must happen via a login form page.
+
+To collect all the configurations related to security, create a SecurityWebFilterChain
+
+bean in a new SecurityConfig class (com.polarbookshop.edgeservice.config
+
+package):
+
+@Bean
+
+The SecurityWebFilterChain bean is used to define and configure security policies for the application.
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http
+
+) {}
+
+The ServerHttpSecurity object, autowired by Spring, provides a convenient DSL for configuring Spring Security and building a SecurityWebFilterChain bean. With authorizeExchange(), you can define access policies for any request (called an exchange in reactive Spring). In this case, we want all requests to require authentication (authenticated()):
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+
+return http
+
+.authorizeExchange(exchange ->
+
+exchange.anyExchange().authenticated()) .build(); }
+
+All requests require authentication.
+
+Spring Security provides several authentication strategies, including HTTP Basic, login form, SAML, and OpenID Connect. For this example, we want to use the login
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+368
+
+CHAPTER 11 Security: Authentication and SPA
+
+form strategy, which we can enable via the formLogin() method exposed by the ServerHttpSecurity object. We'll go with the default configuration (available via the Spring Security Customizer interface), which includes a login page, provided by the framework out of the box, and an automatic redirect to that page whenever a request is not authenticated:
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+
+return http
+
+.authorizeExchange(exchange -> exchange.anyExchange().authenticated())
+
+.formLogin(Customizer.withDefaults()) .build(); }
+
+Enables user authentication via a login form
+
+Next, annotate the SecurityConfig class with @EnableWebFluxSecurity to enable Spring Security WebFlux support. The final security configuration is shown in the following listing.
+
+Listing 11.2 Requiring authentication for all endpoints via a login form
+
+package com.polarbookshop.edgeservice.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.reactive.
+EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+
+@EnableWebFluxSecurity public class SecurityConfig {
+
+@Bean SecurityWebFilterChain springSecurityFilterChain(
+ServerHttpSecurity http ){
+return http .authorizeExchange(exchange -> exchange.anyExchange().authenticated()) .formLogin(Customizer.withDefaults()) .build();
+} }
+
+All requests require authentication.
+Enables user authentication via a login form
+
+Let's verify that it works correctly. First, start your Redis container, required by Edge Service. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command:
+$ docker-compose up -d polar-redis
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.1 Understanding the Spring Security fundamentals
+
+369
+
+Then run the Edge Service application (./gradlew bootRun), open a browser window, and head to http://localhost:9000/books. You should be redirected to a login page served by Spring Security, where you can authenticate.
+Wait a minute! How can we authenticate without defining a user in the system? By default, Spring Security defines a user account in memory with the username user and a password randomly generated and printed out in the application logs. You should look for a log entry like the following:
+Using generated security password: ee60bdf6-fb82-439a-8ed0-8eb9d47bae08
+
+You can authenticate with the predefined user account created by Spring Security. After successfully authenticating, you will be redirected to the /books endpoint. Since Catalog Service is down and Edge Service has a fallback method to return an empty list when querying books (implemented in chapter 9), you'll see a blank page. That's expected.
+NOTE I recommend you open a new incognito browser window every time you test the application from now on. Since you're going to try out different security scenarios, the incognito mode will prevent you from having issues related to browser caches and cookies from previous sessions.
+The crucial point of this test is that a user tried to access a protected endpoint exposed by Edge Service. The application redirected the user to a login page, showed a login form, and asked the user to provide a username and password. Then Edge Service validated the credentials against its internal user database (auto-generated in memory) and, on discovering they were valid, started an authenticated session with the browser. Since HTTP is a stateless protocol, the user session is kept alive through a cookie whose value is provided by the browser with each HTTP request (a session cookie). Internally, Edge Service maintains a mapping between the session identifier and user identifier, as shown in figure 11.1.
+When you are done testing the application, terminate the process with Ctrl-C. Then navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command to stop the Redis container:
+$ docker-compose down
+There are a few problems with the previous approach when applied to a cloud native system. In the rest of the chapter, we'll analyze those problems, identify viable solutions for cloud native applications, and use them on top of what we have just implemented.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+370
+
+CHAPTER 11 Security: Authentication and SPA
+
+Authentication flow with login form
+
+Browser I want to see the list of books.
+
+Edge Service
+Please, give me the list of books. GET /books
+
+First, you need to log in. 302 Redirect to login page
+
+Here's my username and password.
+[Username/Password]
+
+Use these credentials to authenticate the user. [Username/Password]
+
+Done. Now go back to the application. Use this session cookie for subsequent requests.
+302 Redirect to Edge Service + [Session Cookie]
+
+Check credentials and initialize user session.
+
+Please, give me the list of books. GET /books + [Session Cookie]
+Here's the list of books. 200 OK
+
+Check that the user session is valid.
+
+Figure 11.1 After the login step, the user session is kept alive through a session cookie.
+
+11.2
+
+Managing user accounts with Keycloak
+In the previous section, we added user authentication to Edge Service based on a login form. You tried logging in via a user account that was auto-generated in memory at startup time. That's fine for experimenting with Spring Security the first time, but it's not something you'll want to do in production.
+As a minimum requirement, we need persistent storage for user accounts and an option to register new users. There should be a particular focus on storing passwords using a robust encryption algorithm and preventing unauthorized access to the database. Given the criticality of such a feature, it makes sense to delegate it to a dedicated application.
+Keycloak (www.keycloak.org) is an open source identity and access management solution developed and maintained by the Red Hat community. It offers a broad set of
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.2 Managing user accounts with Keycloak
+
+371
+
+features, including single sign-on (SSO), social login, user federation, multi-factor authentication, and centralized user management. Keycloak relies on standards like OAuth2, OpenID Connect, and SAML 2.0. For now, we'll use Keycloak to manage user accounts in Polar Bookshop. Later I'll show you how to use its OpenID Connect and OAuth2 features.
+NOTE Spring Security provides all the necessary features to implement a user management service. If you'd like to learn more about this subject, you can refer to chapters 3 and 4 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020).
+You can run Keycloak locally as a standalone Java application or a container. For production, there are a few solutions for running Keycloak on Kubernetes. Keycloak also needs a relational database for persistence. It comes with an embedded H2 database, but you'll want to replace it with an external one in production.
+For Polar Bookshop, we'll run Keycloak locally as a Docker container, relying on the embedded H2 database. In production we'll use PostgreSQL. This might seem to contradict the environment parity principle, but since it's a third-party application, it's not your responsibility to test its interaction with a data source.
+This section will guide you step-by-step through the Keycloak configuration for the Polar Bookshop use case. First, open your polar-deployment repository. Then define a new polar-keycloak container in docker/docker-compose.yml.
+
+Listing 11.3 Defining a Keycloak container in Docker Compose
+
+version: "3.8"
+
+services: ...
+polar-keycloak:
+
+The section describing the Keycloak container
+
+image: quay.io/keycloak/keycloak:19.0
+
+container_name: "polar-keycloak"
+
+command: start-dev
+
+environment:
+
+- KEYCLOAK_ADMIN=user
+
+- KEYCLOAK_ADMIN_PASSWORD=password
+
+ports:
+
+- 8080:8080
+
+Starts Keycloak in development mode (using an embedded database)
+Defines admin credentials as environment variables
+
+NOTE Later I will provide you with a JSON file you can use to load the entire configuration when starting up the Keycloak container, so you won't need to be concerned about the container's persistence.
+You can start a Keycloak container by opening a Terminal window, navigating to the folder where you keep the docker-compose.yml file, and running this command:
+$ docker-compose up -d polar-keycloak
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+372
+
+CHAPTER 11 Security: Authentication and SPA
+
+Before we can start managing user accounts, we need to define a security realm. We'll do that next.
+
+11.2.1 Defining a security realm
+In Keycloak, any security aspect of an application or a system is defined in the context of a realm, a logical domain in which we apply specific security policies. By default, Keycloak comes preconfigured with a Master realm, but you'll probably want to create a dedicated one for each product you build. Let's create a new PolarBookshop realm to host any security-related aspects of the Polar Bookshop system.
+Make sure the Keycloak container you started earlier is still running. Then open a Terminal window, and enter a bash console inside the Keycloak container:
+
+$ docker exec -it polar-keycloak bash
+
+TIP Keycloak might take several seconds to start up. If you try to access it right after starting the container, you might get an error because it's not yet ready to accept connections. If that happens, wait a few seconds and try again. You can check the Keycloak logs with docker logs -f polar-keycloak. After the message "Running the server in development mode" is printed out, Keycloak is ready to be used.
+We'll configure Keycloak through its Admin CLI, but you can achieve the same result by using the GUI available at http://localhost:8080. First, navigate to the folder where the Keycloak Admin CLI scripts are located:
+
+$ cd /opt/keycloak/bin
+
+The Admin CLI is protected by the username and password we defined in Docker
+
+Compose for the Keycloak container. We'll need to start an authenticated session
+
+before running any other commands:
+$ ./kcadm.sh config credentials \ --server http://localhost:8080 \
+
+Keycloak runs on port 8080 inside the container.
+
+--realm master \ --user user \ --password password
+
+The default realm configured in Keycloak
+
+The password we defined in Docker Compose
+
+The username we defined in Docker Compose
+
+TIP You should keep the current Terminal window open until you're done configuring Keycloak. If at any point the authenticated session expires, you can always start a new one by running the previous command.
+
+At this point, you can go ahead and create a new security realm where all the policies associated with Polar Bookshop will be stored:
+
+$ ./kcadm.sh create realms -s realm=PolarBookshop -s enabled=true
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.2 Managing user accounts with Keycloak
+
+373
+
+11.2.2 Managing users and roles
+We'll need some users to test different authentication scenarios. As anticipated in chapter 2, Polar Bookshop has two types of users: customers and employees.
+ Customers can browse books and purchase them.  Employees can also add new books to the catalog, modify the existing ones, and
+delete them.
+To manage the different permissions associated with each type of user, let's create two roles: customer and employee. Later you'll protect application endpoints based on those roles. It's an authorization strategy called role-based access control (RBAC).
+First, create the two roles in the Polar Bookshop realm from the Keycloak Admin CLI console you have used so far:
+
+$ ./kcadm.sh create roles -r PolarBookshop -s name=employee $ ./kcadm.sh create roles -r PolarBookshop -s name=customer
+
+Then create two users. Isabelle Dahl will be both an employee and a customer of the bookshop (username: isabelle). You can create an account for her as follows:
+
+The user should be
+active.
+
+$ ./kcadm.sh create users -r PolarBookshop \
+
+-s username=isabelle \ -s firstName=Isabelle \ -s lastName=Dahl \ -s enabled=true
+
+The username for the new user. It will be used for logging in.
+
+$ ./kcadm.sh add-roles -r PolarBookshop \
+
+--uusername isabelle \ --rolename employee \ --rolename customer
+
+Isabelle is both an employee and a customer.
+
+Then do the same for Bjorn Vinterberg (username: bjorn), a customer of the bookshop:
+
+The user should be
+active.
+
+$ ./kcadm.sh create users -r PolarBookshop \
+
+-s username=bjorn \ -s firstName=Bjorn \ -s lastName=Vinterberg \ -s enabled=true
+
+The username for the new user. It will be used for logging in.
+
+$ ./kcadm.sh add-roles -r PolarBookshop \
+
+--uusername bjorn \ --rolename customer
+
+Bjorn is a customer.
+
+In a real scenario, users would choose a password themselves and preferably enable two-factor authentication. Isabelle and Bjorn are test users, so assigning an explicit password (password) is OK. You can do that from the Keycloak Admin CLI as follows:
+
+$ ./kcadm.sh set-password -r PolarBookshop \ --username isabelle --new-password password
+$ ./kcadm.sh set-password -r PolarBookshop \ --username bjorn --new-password password
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+374
+
+CHAPTER 11 Security: Authentication and SPA
+
+That's it for user management. You can get out of the bash console inside the Keycloak container with the exit command, but keep Keycloak running.
+Next, let's explore how we can improve the authentication strategy in Edge Service.
+
+11.3
+
+Authentication with OpenID Connect, JWT, and Keycloak
+At the moment, users must log in via a browser with a username and password. Since Keycloak now manages user accounts, we could go ahead and update Edge Service to check the user credentials with Keycloak itself, rather than using its internal storage. But what happens if we introduce different clients to the Polar Bookshop system, such as mobile applications and IoT devices? How should the users authenticate then? What if the bookshop employees are already registered in the company's Active Directory (AD) and want to log in via SAML? Can we provide a single sign-on (SSO) experience across different applications? Will the users be able to log in via their GitHub or Twitter accounts (social login)?
+We could think of supporting all those authentication strategies in Edge Service as we get new requirements. However, that is not a scalable approach. A better solution is delegating a dedicated identity provider to authenticate users following any supported strategy. Edge Service would then use that service to verify the identity of a user without being concerned about performing the actual authentication step. The dedicated service could let users authenticate in various ways, such as using the credentials registered in the system, through social login, or via SAML to rely on the identity defined in the company's AD.
+Using a dedicated service to authenticate users leads to two aspects we need to address for the system to work. First, we need to establish a protocol for Edge Service to delegate user authentication to the identity provider and for the latter to provide information about the authentication result. Second, we need to define a data format that the identity provider can use to securely inform Edge Service about the identity of users after they have been successfully authenticated. This section will address both issues using OpenID Connect and JSON Web Token.
+
+11.3.1 Authenticating users with OpenID Connect
+OpenID Connect (OIDC) is a protocol that enables an application (called the Client) to verify the identity of a user based on the authentication performed by a trusted party (called an Authorization Server) and retrieve the user profile information. The authorization server informs the Client application about the result of the authentication step via an ID Token.
+OIDC is an identity layer on top of OAuth2, an authorization framework that solves the problem of delegating access using tokens for authorization but doesn't deal with authentication. As you know, authorization can only happen after authentication. That's why I decided to cover OIDC first; OAuth2 will be further explored in the next chapter. This is not the typical way of covering those subjects, but I think
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+375
+
+it makes sense when designing an access control system like we're doing for Polar Bookshop.
+NOTE This book will only cover some essential aspects of OAuth2 and OIDC. If you're interested in learning more about them, Manning has a couple of books in its catalog on the subject: OAuth 2 in Action by Justin Richer and Antonio Sanso (Manning, 2017) and OpenID Connect in Action by Prabath Siriwardena (Manning, 2022).
+When it comes to handling user authentication, we can identify three main actors in the OAuth2 framework that are used by the OIDC protocol:
+ Authorization Server--The entity responsible for authenticating users and issuing tokens. In Polar Bookshop, this will be Keycloak.
+ User--Also called the Resource Owner, this is the human logging in with the Authorization Server to get authenticated access to the Client application. In Polar Bookshop, it's either a customer or an employee.
+ Client--The application requiring the user to be authenticated. This can be a mobile application, a browser-based application, a server-side application, or even a smart TV application. In Polar Bookshop, it's Edge Service.
+Figure 11.2 shows how the three actors are mapped to the Polar Bookshop architecture.
+
+User [Person]
+A customer or an employee of the bookshop
+OAuth2 User
+
+Uses Uses
+
+Edge Service [Container: Spring Boot]
+Provides API gateway and cross-cutting concerns
+OAuth2 Client
+Delegates authentication and token management to
+
+Keycloak [Container: Quarkus] Provides identity and access
+management
+OAuth2 Authorization Server
+Polar Bookshop [Software System]
+
+Figure 11.2 How the OIDC/OAuth2 roles are assigned to the entities in the Polar Bookshop architecture for user authentication
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+376
+
+CHAPTER 11 Security: Authentication and SPA
+
+NOTE The roles defined by the OAuth2 framework are also known by different names when used in the context of OpenID Connect. The OAuth2 Authorization Server is also called the OIDC Provider. The OAuth2 Client, which relies on the Authorization Server for authentication and token issuing, is also called the Relying Party (RP). The OAuth2 User is also called the End-User. We'll stick to the OAuth2 naming for consistency, but it's helpful to know the alternative terminology used in OIDC.
+In Polar Bookshop, Edge Service will initiate the user login flow, but then it will delegate the actual authentication step to Keycloak via the OIDC protocol (supported out of the box by Spring Security). Keycloak provides several authentication strategies, including traditional login forms, social logins via providers like GitHub or Twitter, and SAML. It also supports two-factor authentication (2FA). In the following sections, we'll use the login form strategy as an example. Since users will interact directly with Keycloak to log in, their credentials will never be exposed to any component of the system except Keycloak, which is one of the benefits of adopting such a solution.
+When an unauthenticated user calls a secure endpoint exposed by Edge Service, the following happens:
+1 Edge Service (the Client) redirects the browser to Keycloak (the Authorization Server) for authentication.
+2 Keycloak authenticates the user (for example, by asking for a username and password via a login form) and then redirects the browser back to Edge Service, together with an Authorization Code.
+3 Edge Service calls Keycloak to exchange the Authorization Code with an ID Token, containing information about the authenticated user.
+4 Edge Service initializes an authenticated user session with the browser based on a session cookie. Internally, Edge Service maintains a mapping between the session identifier and ID Token (the user identity).
+NOTE The authentication flow supported by OIDC is based on the OAuth2 Authorization Code flow. The second step might seem redundant, but the Authorization Code is essential for ensuring that only the legitimate Client can exchange it with tokens.
+Figure 11.3 describes the essential parts of the authentication flow supported by the OIDC protocol. Even if Spring Security supports that out of the box, and you won't need to implement any of it yourself, it's still beneficial to have an overview of the flow in mind.
+When adopting the authentication flow illustrated in figure 11.3, Edge Service is not affected by the specific authentication strategy. We could configure Keycloak to use an Active Directory or perform a social login via GitHub, and Edge Service would not require any changes. It only needs to support OIDC to verify that the authentication happened correctly and get information about the user via an ID Token. What's
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+377
+
+Authentication flow with OIDC
+
+Browser
+
+Edge Service
+
+I want to see the list of books.
+
+Please, give me the list of books. GET /books
+First, you need to log in. 302 Redirect to Keycloak
+
+Keycloak
+
+Authenticate the user.
+
+Please, provide credentials.
+
+Here's my username and password.
+[Username/Password]
+
+Use these credentials to authenticate the user.
+[Username/Password]
+
+Done. Now go back to the application.
+302 Redirect to Edge Service + [Authorization Code]
+
+Check credentials and generate Authorization Code.
+
+Follow redirect. [Authorization Code]
+Authentication complete. Use this session cookie for future requests.
+302 Redirect + [Session Cookie]
+
+Exchange Authorization Code for ID Token. [Authorization Code]
+Here's the ID Token. [ID Token]
+
+Validate the request.
+
+Initialize the user session and map it to the ID Token.
+
+Please, give me the list of books. GET /books + [Session Cookie] Here's the list of books. 200 OK
+
+Figure 11.3 The authentication flow supported by the OIDC protocol
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+378
+
+CHAPTER 11 Security: Authentication and SPA
+
+an ID Token? It's a JSON Web Token (JWT) containing information about the user authentication event. We'll take a closer look at JWTs in the next section.
+NOTE Whenever I mention OIDC, I am referring to the OpenID Connect Core 1.0 specification (https://openid.net/specs/openid-connect-core-1_0.html). Whenever I mention OAuth2, unless specified otherwise, I am referring to the OAuth 2.1 specification currently under standardization (https://oauth .net/2.1) and meant to replace the OAuth 2.0 standard described in RFC 6749 (https://tools.ietf.org/html/rfc6749).
+
+11.3.2 Exchanging user information with JWT
+In distributed systems, including microservices and cloud native applications, the most-used strategy for exchanging information about an authenticated user and their authorization is through tokens.
+JSON Web Token (JWT) is an industry-standard for representing claims to be transferred between two parties. It's a widely used format for propagating information about an authenticated user and their permissions securely among different parties in a distributed system. A JWT is not used by itself, but it's included in a larger structure, the JSON Web Signature (JWS), which ensures the integrity of the claims by digitally signing the JWT object.
+A digitally signed JWT (JWS) is a string composed of three parts encoded in Base64 and separated by a dot (.) character:
+
+<header>.<payload>.<signature>
+
+NOTE For debugging purposes, you can use the tool available on https:// jwt.io to encode and decode tokens.
+
+As you saw, a digitally signed JWT has three parts:
+
+ Header--A JSON object (called JOSE Header) containing information about the cryptographic operations performed on the payload. The operations follow the standards from the Javascript Object Signing and Encryption (JOSE) framework. A decoded header looks like this:
+
+{ "alg": "HS256", "typ": "JWT"
+}
+
+The algorithm used to sign the token digitally
+The type of token
+
+ Payload--A JSON object (called Claims Set) containing the claims conveyed by the token. The JWT specification defines some standard claim names, but you can also define your own. A decoded payload looks like the following:
+
+{ "iss": "https://sso.polarbookshop.com",
+
+The entity that issued the JWT (the issuer)
+
+"sub": "isabelle",
+
+The entity that is the subject
+
+of the JWT (the end-user)
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+379
+
+"exp": 1626439022 }
+
+When the JWT expires (a timestamp)
+
+ Signature--The signature of the JWT, ensuring that the claims have not been tampered with. A prerequisite of using a JWS structure is that we trust the entity issuing the token (the issuer), and we have a way to check its validity.
+
+When a JWT requires integrity and confidentiality, it's first signed as a JWS and then encrypted with JSON Web Encryption (JWE). In this book, we'll use only JWS.
+
+NOTE If you're interested in learning more about JWT and its related aspects, you can refer to the IETF standard specifications. JSON Web Token (JWT) is documented in RFC 7519 (https://tools.ietf.org/html/rfc7519), JSON Web Signature (JWS) is described in RFC 7515 (https://tools.ietf.org/ html/rfc7515), and JSON Web Encryption (JWE) is presented in RFC 7516 (https://tools.ietf.org/html/rfc7516). You might also be interested in JSON Web Algorithms (JWA), which defines the available cryptographic operations for JWTs and is detailed in RFC 7518 (https://tools.ietf.org/html rfc7518).
+In the case of Polar Bookshop, Edge Service can delegate the authentication step to Keycloak. After authenticating the user successfully, Keycloak will send a JWT to Edge Service with information about the newly authenticated user (ID Token). Edge Service will validate the JWT through its signature and inspect it to retrieve data (claims) about the user. Finally, it will establish an authenticated session with the user's browser based on a session cookie, whose identifier is mapped to the JWT.
+To delegate authentication and retrieve tokens securely, Edge Service must be registered as an OAuth2 Client in Keycloak. Let's see how.
+
+11.3.3 Registering an application in Keycloak
+As you learned in the previous sections, an OAuth2 Client is an application that can request user authentication and ultimately receive tokens from an Authorization Server. In the Polar Bookshop architecture, this role is played by Edge Service. When using OIDC/OAuth2, you need to register each OAuth2 Client with the Authorization Server before using it for authenticating users.
+Clients can be public or confidential. We register an application as a public Client if it can't keep a secret. For example, mobile applications would be registered as public Clients. On the other hand, confidential Clients are those that can keep a secret, and they are usually backend applications like Edge Service. The registration process is similar either way. The main difference is that confidential Clients are required to authenticate themselves with the Authorization Server, such as by relying on a shared secret. It's an additional protection layer we can't use for public Clients, since they have no way to store the shared secret securely.
+Since Edge Service will be the OAuth2 Client in the Polar Bookshop system, let's register it with Keycloak. We can rely on the Keycloak Admin CLI one more time.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+380
+
+CHAPTER 11 Security: Authentication and SPA
+
+The Client dilemma in OAuth2
+The Client role can be assigned either to a frontend or a backend application. The main difference is the level of security of the solution. The Client is the entity that will receive tokens from the Authorization Server. The Client will have to store them somewhere to be used in subsequent requests from the same user. Tokens are sensitive data that should be secured, and there's no better place than a backend application to do that. But it's not always possible.
+Here is my rule of thumb. If the frontend is a mobile or desktop application like iOS or Android, that will be the OAuth2 Client, and it will be categorized as a public Client. You can use libraries like AppAuth (https://appauth.io) to add support for OIDC/ OAuth2 and store the tokens as securely as possible on the device. If the frontend is a web application (like in Polar Bookshop), then a backend service should be the Client. In this case, it would be categorized as a confidential Client.
+The reason for this distinction is that no matter how much you try to hide the OIDC/OAuth2 tokens in the browser (cookies, local storage, session storage), they will always be at risk of being exposed and misused. "From a security perspective, it is virtually impossible to secure tokens in a frontend web application." That's what application security expert Philippe De Ryck writes,a recommending engineers rely on the backend-for-frontend pattern and have a backend application deal with tokens instead.
+I recommend basing the interaction between browser and backend on a session cookie (like you'd do for monoliths) and have the backend application be responsible for controlling the authentication flow and using the tokens issued by the Authorization Server, even in the case of SPAs. That is the current best practice recommended by security experts.
+a P. De Ryck, "A Critical Analysis of Refresh Token Rotation in Single-page Applications," Ping Identity blog, March 18, 2021, http://mng.bz/QWG6.
+Make sure the Keycloak container you started earlier is still running. Then open a Terminal window and enter a bash console inside the Keycloak container:
+$ docker exec -it polar-keycloak bash
+Next, navigate to the folder where the Keycloak Admin CLI scripts are located:
+$ cd /opt/keycloak/bin
+As you learned earlier, the Admin CLI is protected by the username and password we defined in Docker Compose for the Keycloak container, so we need to start an authenticated session before running any other commands:
+$ ./kcadm.sh config credentials --server http://localhost:8080 \ --realm master --user user --password password
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+381
+
+Finally, register Edge Service as an OAuth2 Client in the PolarBookshop realm:
+
+It must be enabled.
+Edge Service is a confidential
+client, not public.
+
+$ ./kcadm.sh create clients -r PolarBookshop \
+
+-s clientId=edge-service \ -s enabled=true \ -s publicClient=false \
+
+The OAuth2 Client identifier
+
+-s secret=polar-keycloak-secret \
+-s 'redirectUris=["http://localhost:9000",
+"http://localhost:9000/login/oauth2/code/*"]'
+
+Since it's a confidential client, it needs a secret to authenticate with Keycloak.
+
+The application URLs to which Keycloak is authorized to redirect a request after a user login or logout
+
+The valid redirect URLs are the endpoints exposed by the OAuth2 Client application (Edge Service) where Keycloak will redirect authentication requests. Since Keycloak can include sensitive information in a redirect request, we want to limit which applications and endpoints are authorized to receive such information. As you'll learn later, the redirect URL for authentication requests will be http://localhost:9000/login/ oauth2/code/*, following the default format provided by Spring Security. To support redirects after logout operations, we also need to add http://localhost:9000 as a valid redirect URL.
+That's it for this section. In the source code repository accompanying the book, I included a JSON file you can use to load the entire configuration when starting up the Keycloak container in the future (Chapter11/11-end/polar-deployment/ docker/keycloak/realm-config.json). Now that you've familiarized yourself with Keycloak, you can update the container definition to ensure you always have the needed configuration at startup. Copy the JSON file over the same path in your own project, and update the polar-keycloak service in your docker-compose.yml file as follows.
+
+Listing 11.4 Importing realm configuration in Keycloak container
+
+version: "3.8" services:
+...
+
+polar-keycloak: image: quay.io/keycloak/keycloak:19.0 container_name: "polar-keycloak" command: start-dev --import-realm volumes: - ./keycloak:/opt/keycloak/data/import environment: - KEYCLOAK_ADMIN=user - KEYCLOAK_ADMIN_PASSWORD=password ports: - 8080:8080
+
+Imports the provided configuration at startup time
+Configures a volume to load the configuration file into the container
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+382
+
+CHAPTER 11 Security: Authentication and SPA
+
+Why Keycloak
+I decided to use Keycloak since it's a mature, open source solution for running an Authorization Server yourself. After increasing demands from the community, Spring started a new Spring Authorization Server project (https://github.com/spring-projects/ spring-authorization-server). Since version 0.2.0, it's been a production-ready solution for setting up an OAuth2 Authorization Server. At the time of writing, the project provides an implementation for the most common OAuth2 features, and it's currently working on extending support for OIDC-specific features. You can follow the progress and contribute to the project on GitHub.
+Another option is to use a SaaS solution like Okta (www.okta.com) or Auth0 (https:// auth0.com). They are both excellent solutions for getting OIDC/OAuth2 as a managed service, and I encourage you to try them out. For this book, I wanted to use a solution that you could run and reliably reproduce in your local environment without depending on other services that might change over time, making my instructions here invalid.
+
+Before moving on, let's stop any running containers. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/ docker/docker-compose.yml), and run the following command:
+
+$ docker-compose down
+
+We now have all the pieces for refactoring Edge Service so it can use an authentication strategy relying on OIDC/OAuth2, JWT, and Keycloak. The best part is that it's based on standards and supported by all major languages and frameworks (frontend, backend, mobile, IoT), including Spring Security.
+
+11.4
+
+Authenticating users with Spring Security and OpenID Connect
+As mentioned earlier, Spring Security supports several authentication strategies. The current security setup for Edge Service handles user accounts and authentication via a login form provided by the application itself. Now that you've learned about OpenID Connect, we can refactor the application to delegate user authentication to Keycloak via the OIDC protocol.
+Support for OAuth2 used to be in a separate project called Spring Security OAuth, which you would use as part of Spring Cloud Security to adopt OAuth2 in a cloud native application. Both of those projects have now been deprecated in favor of the native, more comprehensive support for OAuth2 and OpenID Connect introduced in the main Spring Security project, starting from version 5. This chapter focuses on using the new OIDC/OAuth2 support in Spring Security 5 to authenticate the users of Polar Bookshop.
+
+NOTE If you find yourself working on a project using the deprecated Spring Security OAuth and Spring Cloud Security projects, you might want to check
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+383
+
+out chapters 12 through 15 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where they are explained in great detail.
+Using Spring Security and its OAuth2/OIDC support, this section will show you how to do the following for Edge Service:
+ Use OpenID Connect to authenticate users.  Configure user logout.  Extract information about the authenticated user.
+Let's get started!
+11.4.1 Adding the new dependencies
+First of all, we need to update the dependencies for Edge Service. We can replace the existing Spring Security starter dependency with the more specific OAuth2 Client one, which adds support for OIDC/OAuth2 client features. Furthermore, we can add the Spring Security Test dependency, which provides additional support for testing security scenarios in Spring.
+Open the build.gradle file for the Edge Service project (edge-service) and add the new dependencies. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 11.5 Adding dependencies for Spring Security OAuth2 Client
+dependencies { ... implementation
+ 'org.springframework.boot:spring-boot-starter-oauth2-client'
+testImplementation 'org.springframework.security:spring-security-test' }
+
+Spring integration with Keycloak
+When choosing Keycloak as the Authorization Server, an alternative to the native OpenID Connect/OAuth2 support provided by Spring Security was the Keycloak Spring Adapter. It was a library supplied by the Keycloak project itself to integrate with Spring Boot and Spring Security, but it was retired after the release of Keycloak 17.
+If you find yourself working on a project using the Keycloak Spring Adapter, you might want to check out my articles on the subject (www.thomasvitale.com/tag/keycloak) or chapter 9 of Spring Microservices in Action, second edition, by John Carnell and Illary Huaylupo Sánchez (Manning, 2021).
+
+11.4.2 Configuring the integration between Spring Security and Keycloak
+After adding the relevant dependencies on Spring Security, we need to configure the integration with Keycloak. In the previous section we registered Edge Service in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+384
+
+CHAPTER 11 Security: Authentication and SPA
+
+Keycloak as an OAuth2 Client, defining both a client identifier (edge-service) and a shared secret (polar-keycloak-secret). Now we'll use that information to tell Spring Security how to interact with Keycloak.
+Open the application.yml file in your Edge Service project, and add the following configuration.
+
+Listing 11.6 Configuring Edge Service as an OAuth2 Client
+
+spring: security: oauth2:
+
+The name identifying the Client registration in Spring Security (called "registrationId"). It can be any string.
+
+client:
+
+The shared secret used by
+the Client to authenticate with Keycloak
+
+registration: keycloak: client-id: edge-service
+
+The OAuth2 Client identifier as defined in Keycloak
+
+client-secret: polar-keycloak-secret
+
+scope: openid provider:
+
+The list of scopes the Client would like to have access to. The openid scope triggers
+
+keycloak:
+
+OIDC authentication on top of OAuth2.
+
+issuer-uri:
+
+http://localhost:8080/realms/PolarBookshop
+
+The same name used as "registrationId" a few lines above
+
+The Keycloak URL providing information about all the relevant OAuth2 and OIDC
+endpoints for the specific realm
+
+Each Client registration in Spring Security must have an identifier (registrationId). In this example, it's keycloak. The registration identifier is used to build the URL where Spring Security receives the Authorization Code from Keycloak. The default URL template is /login/oauth2/code/{registrationId}. For Edge Service, the full URL is http://localhost:9000/login/oauth2/code/keycloak, which we already configured in Keycloak as a valid redirect URL.
+Scopes are an OAuth2 concept for limiting an application's access to user resources. You can think of them as roles, but for applications instead of users. When we use the OpenID Connect extension on top of OAuth2 to verify the user's identity, we need to include the openid scope to inform the Authorization Server and receive an ID Token containing data about the user authentication. The next chapter will explain more about scopes in the context of authorization.
+Now that we've defined the integration with Keycloak, let's configure Spring Security to apply the desired security policies.
+
+11.4.3 Basic Spring Security configuration
+The central place for defining and configuring security policies in Spring Security is a SecurityWebFilterChain class. Edge Service is currently configured to require user authentication for all endpoints, and it uses an authentication strategy based on a login form. Let's change that to use OIDC authentication instead.
+The ServerHttpSecurity object provides two ways of configuring an OAuth2 Client in Spring Security. With oauth2Login(), you can configure an application to act as
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+385
+
+an OAuth2 Client and also authenticate users through OpenID Connect. With oauth2Client(), the application will not authenticate users, so it's up to you to define another authentication mechanism. We want to use OIDC authentication, so we'll use oauth2Login() and the default configuration. Update the SecurityConfig class as follows.
+
+Listing 11.7 Requiring authentication for all endpoints through OIDC
+@EnableWebFluxSecurity public class SecurityConfig {
+
+@Bean SecurityWebFilterChain springSecurityFilterChain(
+ServerHttpSecurity http ){
+return http .authorizeExchange(exchange -> exchange.anyExchange().authenticated()) .oauth2Login(Customizer.withDefaults()) .build();
+} }
+
+Enables user authentication with OAuth2/OpenID Connect
+
+Let's verify that this works correctly. First, start the Redis and Keycloak containers. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command:
+
+$ docker-compose up -d polar-redis polar-keycloak
+
+Then run the Edge Service application (./gradlew bootRun), open a browser window, and head to http://localhost:9000. You should be redirected to a login page served by Keycloak, where you can authenticate as one of the users we created previously (figure 11.4).
+For example, log in as Isabelle (isabelle/password) and pay attention to how Keycloak redirects you back to Edge Service after validating the provided credentials. Since Edge Service doesn't expose any content through the root endpoint, you'll see an error message ("Whitelabel Error Page"). But don't worry! That's where we'll integrate an Angular frontend later. The crucial point of this test is that Edge Service required you to be authenticated before accessing any of its endpoints, and it triggered the OIDC authentication flow.
+When you're done trying out the OIDC authentication flow, stop the application with Ctrl-C.
+If the authentication is successful, Spring Security will start an authenticated session with the browser and save information about the user. In the next section, you'll see how we can retrieve and use that information.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+386
+
+CHAPTER 11 Security: Authentication and SPA
+
+Figure 11.4 The Keycloak login page for the Polar Bookshop realm, shown after Edge Service triggered the OIDC authentication flow
+
+11.4.4 Inspecting the authenticated user context
+As part of the authentication process, Spring Security defines a context to hold information about the user and map a user session to an ID Token. In this section, you'll learn more about this context, what classes are involved, and how to retrieve the data and expose it through a new /user endpoint in Edge Service.
+First, let's define a User model to collect the username, first name, last name, and roles of an authenticated user. That's the same information we provided when registering the two users in Keycloak, and it is the information returned in the ID Token. In a new com.polarbookshop.edgeservice.user package, create a User record as follows.
+
+Listing 11.8 Creating the User record to hold info about an authenticated user
+package com.polarbookshop.edgeservice.user;
+
+import java.util.List;
+
+public record User( String username, String firstName, String lastName, List<String> roles
+){}
+
+Immutable data class holding user data
+
+Independent of the authentication strategy adopted (whether username/password, OpenID Connect/OAuth2, or SAML2), Spring Security keeps the information about
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+387
+
+an authenticated user (also called the principal) in an Authentication object. In the case of OIDC, the principal object is of type OidcUser, and it's where Spring Security stores the ID Token. In turn, Authentication is saved in a SecurityContext object.
+One way to access the Authentication object for the currently logged-in user is extracting it from the related SecurityContext retrieved from the ReactiveSecurityContextHolder (or SecurityContextHolder for imperative applications). Figure 11.5 illustrates how all these objects are related to each other.
+
+Security context structure for OIDC authentication in Spring Security
+
+ReactiveSecurityContextHolder
+
+Gives access to
+Contains SecurityContext
+
+Authentication
+
+Contains
+
+OidcUser (Principal)
+
+Contains
+
+OidcIdT oken (ID Token)
+
+Figure 11.5 The main classes used to store information about the currently authenticated user
+
+You can make that work by doing the following:
+
+1 Create a UserController class annotated with @RestController in the com.polarbookshop.edgeservice.user package.
+2 Define a method to handle GET requests to a new /user endpoint. 3 Return a User object for the currently authenticated user, retrieving the neces-
+sary information from OidcUser. To get the correct data, we can use the call hierarchy shown in figure 11.5.
+
+The resulting method in the UserController class will look like this:
+
+@GetMapping("user")
+
+Gets SecurityContext for the currently authenticated user from
+ReactiveSecurityContextHolder
+
+public Mono<User> getUser() { return ReactiveSecurityContextHolder.getContext() .map(SecurityContext::getAuthentication)
+
+Gets Authentication from SecurityContext
+
+.map(authentication ->
+
+(OidcUser) authentication.getPrincipal()) .map(oidcUser ->
+new User( oidcUser.getPreferredUsername(),
+
+Gets the principal from Authentication. For OIDC, it's of type OidcUser.
+
+oidcUser.getGivenName(), oidcUser.getFamilyName(), List.of("employee", "customer") )
+
+Builds a User object using data from OidcUser (extracted from the ID Token)
+
+);
+
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+388
+
+CHAPTER 11 Security: Authentication and SPA
+
+In the next chapter, which focuses on authorization strategies, we'll configure Keycloak to include a custom roles claim in the ID Token and use that value to build the User object in the UserController class. Until then, we'll use a fixed list of values.
+For Spring Web MVC and WebFlux controllers, besides using ReactiveSecurityContextHolder directly, we can use the annotations @CurrentSecurityContext and @AuthenticationPrincipal to inject the SecurityContext and the principal (in this case, OidcUser) respectively.
+Let's simplify the implementation of the getUser() method by injecting the OidcUser object directly as an argument. The final result for the UserController class is shown in the following listing.
+
+Listing 11.9 Returning information about the currently authenticated user
+
+package com.polarbookshop.edgeservice.user;
+
+import java.util.List; import reactor.core.publisher.Mono; import org.springframework.security.core.annotation.
+AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser; import org.springframework.web.bind.annotation.GetMapping; import org.springframework.web.bind.annotation.RestController;
+
+@RestController public class UserController {
+
+@GetMapping("user") public Mono<User> getUser(
+@AuthenticationPrincipal OidcUser oidcUser
+
+Injects an OidcUser object containing info about the currently authenticated user
+
+){
+
+var user = new User( oidcUser.getPreferredUsername(), oidcUser.getGivenName(), oidcUser.getFamilyName(),
+
+Builds a User object from relevant claims contained in OidcUser
+
+List.of("employee", "customer")
+
+);
+
+return Mono.just(user); } }
+
+Wraps the User object in a reactive publisher, since Edge Service is a reactive application
+
+Ensure that Keycloak and Redis are still running from the previous section, run the Edge Service application (./gradlew bootRun), open an incognito browser window, and navigate to http://localhost:9000/user. Spring Security will redirect you to Keycloak, which will prompt you to log in with a username and password. For example, authenticate as Bjorn (bjorn/password). After successfully authenticating, you will be redirected back to the /user endpoint. The result is the following:
+
+{ "username": "bjorn", "firstName": "Bjorn", "lastName": "Vinterberg",
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+389
+
+"roles": [ "employee", "customer"
+] }
+
+NOTE The roles list includes hardcoded values. In the next chapter, we'll change it to return the actual roles assigned to each user in Keycloak.
+When you're done trying out the new endpoint, stop the application with Ctrl-C and the containers with docker-compose down.
+Consider what happened when you tried to access the /user endpoint and got redirected to Keycloak. After successfully validating the user's credentials, Keycloak called Edge Service back and sent the ID Token for the newly authenticated user. Then Edge Service stored the token and redirected the browser to the required endpoint, together with a session cookie. From that point on, any communication between the browser and Edge Service will use that session cookie to identify the authenticated context for that user. No token is exposed to the browser.
+The ID Token is stored in OidcUser, part of Authentication and ultimately included in SecurityContext. In chapter 9, we used the Spring Session project to make Edge Service store session data in an external data service (Redis), so it could remain stateless and be able to scale out. SecurityContext objects are included in the session data and are therefore stored in Redis automatically, making it possible for Edge Service to scale out without any problem.
+Another option for retrieving the currently authenticated user (the principal) is from the context associated with a specific HTTP request (called the exchange). We'll use that option to update the rate limiter configuration. In chapter 9, we implemented rate-limiting with Spring Cloud Gateway and Redis. Currently the rate-limiting is computed based on the total number of requests received every second. We should update it to apply the rate limits to each user independently.
+Open the RateLimiterConfig class and configure how the username of the currently authenticated principal should be extracted from the request. If no user is defined (that is, the request is unauthenticated, anonymous), we use a default key to apply rate-limiting to all unauthenticated requests as a whole.
+
+Listing 11.10 Configuring rate limiting for each user
+
+@Configuration public class RateLimiterConfig {
+@Bean
+
+Gets the currently authenticated user (the principal) from the current request (the exchange)
+
+KeyResolver keyResolver() {
+
+return exchange -> exchange.getPrincipal()
+
+.map(Principal::getName)
+
+Extracts the username from the principal
+
+.defaultIfEmpty("anonymous"); } }
+
+If the request is unauthenticated, it uses "anonymous" as the default key to apply rate-limiting.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+390
+
+CHAPTER 11 Security: Authentication and SPA
+
+That concludes the basic configuration for authenticating users of Polar Bookshop using OpenID Connect. The following section will cover how logout works in Spring Security and how we can customize it for the OAuth2/OIDC scenario.
+11.4.5 Configuring user logout in Spring Security and Keycloak
+So far, we have addressed the challenges and solutions for authenticating users in a distributed system. Still, we should consider what happens when a user logs out.
+In Spring Security, logging out results in all the session data associated with the user being deleted. When OpenID Connect/OAuth2 is used, the tokens stored by Spring Security for that user are also deleted. However, the user will still have an active session in Keycloak. Just as the authentication process involves both Keycloak and Edge Service, completely logging a user out requires propagating the logout request to both components.
+By default, a logout performed against an application protected by Spring Security will not affect Keycloak. Fortunately, Spring Security provides an implementation of the "OpenID Connect RP-Initiated Logout" specification, which defines how a logout request should be propagated from an OAuth2 Client (the Relying Party) to the Authorization Server. You'll see how to configure it for Edge Service soon.
+NOTE The OpenID Connect specification includes a few different scenarios for session management and logout. If you'd like to learn more, I recommend you check the official documents for OIDC Session Management (https://openid.net/specs/openid-connect-session-1_0.html), OIDC FrontChannel Logout (https://openid.net/specs/openid-connect-frontchannel1_0.html), OIDC Back-Channel Logout (https://openid.net/specs/openid -connect-backchannel-1_0.html), and OIDC RP-Initiated Logout (https:// openid.net/specs/openid-connect-rpinitiated-1_0.html).
+Spring Security supports logging out by sending a POST request to the /logout endpoint implemented and exposed by the framework by default. We want to enable the RP-Initiated Logout scenario so that when a user logs out of the application, they are also logged out of the Authorization Server. Spring Security has full support for this scenario and provides an OidcClientInitiatedServerLogoutSuccessHandler object you can use to configure how to propagate a logout request to Keycloak.
+Let's say the RP-Initiated Logout feature is enabled. In that case, after a user has been successfully logged out of Spring Security, Edge Service will send a logout request to Keycloak through the browser (using a redirect). Next you'll probably want the user to be redirected back to the application after the logout operation has been performed on the Authorization Server as well.
+You can configure where the user should be redirected after a logout with the setPostLogoutRedirectUri() method, which is exposed by the OidcClientInitiatedServerLogoutSuccessHandler class. You might specify a direct URL, but that will not work well in a cloud environment due to many variables such as hostnames, service
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+391
+
+names, and protocols (http vs. https). The Spring Security team knew that, and they added support for placeholders that are resolved dynamically at runtime. Instead of hardcoding a URL value, you can use the {baseUrl} placeholder. When you run Edge Service locally, the placeholder will be resolved to http://localhost:9000. If you ran it in the cloud behind a proxy with TLS termination and accessible through the DNS name polarbookshop.com, it would automatically be replaced with https://polarbookshop.com.
+However, the Client configuration in Keycloak requires an exact URL. That's why we added http://localhost:9000 to the list of valid redirect URLs when we registered Edge Service in Keycloak. In production you'll have to update the list of valid redirect URLs in Keycloak to match the actual URLs used there.
+Figure 11.6 illustrates the logout scenario I've just described.
+
+Logout flow with OIDC
+
+Browser
+
+Edge Service
+
+Please, log me out.
+
+Log the user out. POST /logout
+Done. Now log out of Keycloak as well.
+302 Redirect to Keycloak
+
+Delete the session data.
+
+Log the user out.
+
+Done. Now go back to the application. 302 Redirect to Edge Service
+Show the homepage. GET /
+Here's the homepage. 200 OK
+
+Keycloak
+Invalidate tokens and delete the session data.
+
+Figure 11.6 When a user logs out, the request is processed by Spring Security first, then forwarded to Keycloak, and the user is finally redirected to the application.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+392
+
+CHAPTER 11 Security: Authentication and SPA
+
+Since the application's logout functionality is already provided by default in Spring Security, you only need to enable and configure the RP-Initiated Logout for Edge Service:
+1 In the SecurityConfig class, define an oidcLogoutSuccessHandler() method to build an OidcClientInitiatedServerLogoutSuccessHandler object.
+2 Configure the post-logout redirect URL using the setPostLogoutRedirectUri() method.
+3 Call the oidcLogoutSuccessHandler() method from the logout() configuration defined in the SecurityWebFilterChain bean.
+The resulting configuration in the SecurityConfig class is as follows.
+
+Listing 11.11 Configuring RP-Initiated Logout and redirecting on logout
+package com.polarbookshop.edgeservice.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.reactive.
+ EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.oauth2.client.oidc.web.server.logout.
+ OidcClientInitiatedServerLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.
+ ReactiveClientRegistrationRepository;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.authentication.logout.
+ ServerLogoutSuccessHandler;
+
+@EnableWebFluxSecurity public class SecurityConfig {
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http .authorizeExchange(exchange -> exchange.anyExchange().authenticated()) .oauth2Login(Customizer.withDefaults()) .logout(logout -> logout.logoutSuccessHandler(
+
+Defines a custom handler for the scenario where a logout operation is completed successfully
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build();
+
+}
+
+private ServerLogoutSuccessHandler oidcLogoutSuccessHandler( ReactiveClientRegistrationRepository clientRegistrationRepository
+){ var oidcLogoutSuccessHandler = new OidcClientInitiatedServerLogoutSuccessHandler( clientRegistrationRepository);
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+393
+
+oidcLogoutSuccessHandler
+
+.setPostLogoutRedirectUri("{baseUrl}");
+
+return oidcLogoutSuccessHandler;
+
+}
+
+After logging out from the OIDC Provider, Keycloak will
+
+}
+
+redirect the user to the application base URL computed
+
+dynamically from Spring (locally, it's http://localhost:9000).
+
+NOTE The ReactiveClientRegistrationRepository bean is automatically configured by Spring Boot for storing the information about the clients registered with Keycloak, and it's used by Spring Security for authentication/ authorization purposes. In our example, there's only a client: the one we configured earlier in the application.yml file.
+I won't ask you to test the logout functionality just yet. The reason will be apparent after we introduce the Angular frontend to the Polar Bookshop system.
+The user authentication feature based on OpenID Connect/OAuth2 is now complete, including logout and scalability concerns. If Edge Service used a template engine like Thymeleaf to build the frontend, the work we've done so far would be enough. However, when you're integrating a secured backend application with an SPA like Angular, there are a few more aspects to consider. That will be the focus of the next section.
+
+11.5
+
+Integrating Spring Security with SPAs
+The web frontend part of microservice architectures and other distributed systems is often built as one or more single-page applications using frameworks like Angular, React, or Vue. Analyzing how SPAs are created is not in the scope of this book, but it's essential to look at what changes are needed to support such frontend clients.
+So far, you have interacted with the services composing the Polar Bookshop system through a Terminal window. In this section, we'll add an Angular application that will be the frontend of the system. It will be served by an NGINX container and be accessible via the gateway provided by Edge Service. Supporting an SPA will require some additional configuration in Spring Security to address concerns like Cross-Origin Request Sharing (CORS) and Cross-Site Request Forgery (CSRF). This section shows how to do that.
+
+11.5.1 Running an Angular application
+The Polar Bookshop system will have an Angular application as the frontend. Since this book doesn't cover frontend technologies and patterns, I have prepared one already. We just need to decide how to include it in the Polar Bookshop system.
+One option is to let Edge Service serve the SPA static resources. Spring Boot applications serving a frontend usually host the source code in src/main/resources. That's a convenient strategy when using template engines like Thymeleaf, but for SPAs like Angular, I prefer keeping the code in a separate module. SPAs have their own development, build, and release tools, so having a dedicated folder is cleaner and more
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+394
+
+CHAPTER 11 Security: Authentication and SPA
+
+maintainable. Then you can configure Spring Boot to process the SPA's static resources at build time and include them in the final release.
+Another option is to have a dedicated service take care of serving the Angular static resources. That's the strategy we'll use for Polar Bookshop. I have already packaged the Angular application in an NGINX container. NGINX (https://nginx.org) provides HTTP server features, and it's very convenient for serving static resources such as the HTML, CSS, and JavaScript files composing the Angular application.
+Let's go ahead and run the Polar Bookshop frontend (polar-ui) in Docker. First, go to your polar-deployment repository, and open your Docker Compose file (docker/docker-compose.yml). Then add the configuration to run polar-ui and expose it through port 9004.
+
+Listing 11.12 Running the Angular application as a container
+
+version: "3.8" services:
+...
+
+polar-ui:
+
+image: "ghcr.io/polarbookshop/polar-ui:v1"
+
+container_name: "polar-ui" ports:
+- 9004:9004
+
+NGINX will serve the SPA on port 9004.
+
+environment: - PORT=9004
+
+Configures the NGINX server port
+
+The container image I built to package the Angular application
+
+Like the other applications in the Polar Bookshop system, we don't want the Angular application to be accessible directly from the outside. Instead, we want to make it accessible via the gateway provided by Edge Service. We can do that by adding a new route for Spring Cloud Gateway to forward any requests for static resources to the Polar UI application.
+Go to your Edge Service project (edge-service), open the application.yml file, and configure the new route as follows.
+
+Listing 11.13 Configuring a new gateway route for the SPA static resources
+
+spring:
+
+gateway: routes:
+
+The route ID
+
+- id: spa-route
+
+uri: ${SPA_URL:http://localhost:9004}
+
+predicates:
+
+- Path=/,/*.css,/*.js,/favicon.ico
+
+The URI value comes from an environment variable, or else the specified default.
+The predicate is a list of paths matching the root endpoint and the SPA static resources.
+
+The URI for the Polar UI application is computed using the value from an environment variable (SPA_URL). If it's not defined, the default value written after the first colon (:) symbol will be used.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+395
+
+NOTE When running Edge Service as a container, remember to configure the SPA_URL environment variable. On Docker you can use the container name and port as the value, resulting in http://polar-ui:9004.
+Let's test it out. First, run the Polar UI container together with Redis and Keycloak. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command:
+$ docker-compose up -d polar-ui polar-redis polar-keycloak
+Then build the Edge Service project again, and run the application (./gradlew bootRun). Finally, open an incognito browser window and navigate to http://localhost:9000.
+Spring Security is configured to protect all endpoints and resources, so you'll automatically be redirected to the Keycloak login page. After you authenticate as either Isabelle or Bjorn, you'll be redirected back to the Edge Service root endpoint from which the Angular frontend is served.
+For now, there's not much you can do. The authentication flow is triggered by Spring Security when it receives an unauthenticated request, but it won't work if it's an AJAX request due to CORS issues. Furthermore, POST requests (including the logout operation) will fail due to the CSRF protection enabled by Spring Security. In the following sections, I'll show you how to update the Spring Security configuration to overcome those issues.
+Before moving on, stop the application with Ctrl-C (but keep the containers running--you'll need them).
+11.5.2 Controlling the authentication flow
+In the previous section, you tried accessing the Edge Service homepage and experienced being automatically redirected to Keycloak to provide a username and password. When the frontend consists of server-rendered pages (such as when using Thymeleaf), that behavior works fine, and it's convenient since it doesn't require any extra configuration. If you're not authenticated yet, or your session has expired, Spring Security will automatically trigger the authentication flow and redirect your browser to Keycloak.
+With a single-page application, things work a bit differently. The Angular application is returned by the backend when accessing the root endpoint through a standard HTTP GET request performed by the browser. After that first step, the SPA interacts with the backend through AJAX requests. When the SPA sends an unauthenticated AJAX request to a protected endpoint, you don't want Spring Security to reply with an HTTP 302 response redirecting to Keycloak. Instead, you want it to return a response with an error status like HTTP 401 Unauthorized.
+The main reason for not using redirects with SPAs is that you would run into CrossOrigin Request Sharing (CORS) issues. Consider the scenario where an SPA is served from https://client.polarbookshop.com and makes HTTP calls through AJAX to a
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+396
+
+CHAPTER 11 Security: Authentication and SPA
+
+backend at https://server.polarbookshop.com. The communication is blocked because the two URLs don't have the same origin (the same protocol, domain, and port). That's the standard same-origin policy enforced by all web browsers.
+CORS is a mechanism for allowing a server to accept HTTP calls through AJAX from a browser-based client like an SPA, even if the two have different origins. In Polar Bookshop, we serve the Angular frontend via the gateway implemented in Edge Service (same origin). Therefore, there aren't any CORS issues between these two components. However, suppose Spring Security is configured to reply to an unauthenticated AJAX call with a redirect to Keycloak (having a different origin). In that case, the request will be blocked because redirects to different origins are not permitted during AJAX requests.
+NOTE To learn more about CORS in Spring Security, you can check out chapter 10 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where the subject is explained in great detail. For a comprehensive explanation of CORS, see CORS in Action by Monsur Hossain (Manning, 2014).
+When changing the Spring Security configuration to reply with an HTTP 401 response to unauthenticated requests, it's up to the SPA to handle the error and call the backend to initiate the authentication flow. Redirects are only a problem during AJAX requests. The crucial part here is that the call to the backend to start the user authentication is not an AJAX request sent by Angular. Instead, it's a standard HTTP call sent from the browser, like the following:
+login(): void { window.open('/oauth2/authorization/keycloak', '_self');
+}
+I'd like to stress that the login call is not an AJAX request sent from the Angular HttpClient. Instead, it instructs the browser to call the login URL. Spring Security exposes an /oauth2/authorization/{registrationId} endpoint that you can use to start the authentication flow based on OAuth2/OIDC. Since the client registration identifier for Edge Service is keycloak, the login endpoint will be /oauth2/authorization/ keycloak.
+To make that possible, we need to define a custom AuthenticationEntryPoint to instruct Spring Security to reply with an HTTP 401 status when an unauthenticated request is received for a protected resource. The framework already provides an HttpStatusServerEntryPoint implementation that perfectly suits this scenario, since it lets you specify which HTTP status to return when a user is required to authenticate.
+Listing 11.14 Returning 401 when the user is not authenticated
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+397
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){
+
+return http
+
+.authorizeExchange(exchange -> exchange.anyExchange().authenticated())
+
+.exceptionHandling(exceptionHandling ->
+
+exceptionHandling.authenticationEntryPoint(
+
+new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)))
+
+.oauth2Login(Customizer.withDefaults())
+
+.logout(logout -> logout.logoutSuccessHandler(
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build(); } }
+
+When an exception is thrown because a user is not authenticated, it replies with an HTTP 401 response.
+
+At this point, the Angular application can explicitly intercept HTTP 401 responses and trigger the authentication flow. However, since the SPA is now in charge of starting the flow, we need to permit unauthenticated access to its static resources. We would also like to retrieve the books in the catalog without being authenticated, so let's permit GET requests to the /books/** endpoints as well. Go ahead and update the SecurityWebFilterChain bean in the SecurityConfig class as follows.
+
+Listing 11.15 Allowing unauthenticated GET requests to SPA and books
+
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http .authorizeExchange(exchange -> exchange
+
+Allows unauthenticated access to the SPA static resources
+
+Any other request
+requires user authentication.
+
+.pathMatchers("/", "/*.css", "/*.js", "/favicon.ico")
+
+.permitAll()
+
+.pathMatchers(HttpMethod.GET, "/books/**")
+
+.permitAll() .anyExchange().authenticated() )
+
+Allows unauthenticated read access to the books in the catalog
+
+.exceptionHandling(exceptionHandling -> exceptionHandling
+
+.authenticationEntryPoint(
+
+new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)))
+
+.oauth2Login(Customizer.withDefaults())
+
+.logout(logout -> logout.logoutSuccessHandler(
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build();
+
+}
+
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+398
+
+CHAPTER 11 Security: Authentication and SPA
+
+Let's test how Edge Service works now. Ensure that the Polar UI, Redis, and Keycloak containers are still running. Next, build and run the Edge Service application (./gradlew bootRun), and then go to http://localhost:9000 from an incognito browser window. The first thing to notice is that you don't get redirected to the login page but are presented with the Angular frontend application immediately. You can start the authentication flow by clicking the Login button in the upper-right menu.
+After logging in, the upper-right menu will contain a Logout button, which is only shown if the current user is successfully authenticated. Click the button to log out. It should trigger the logout flow, but it won't work due to CSRF issues. You'll learn how to fix that in the next section. In the meantime, stop the application with Ctrl-C.
+11.5.3 Protecting against Cross-Site Request Forgery
+The interaction between the frontend and backend is based on a session cookie. After the user is successfully authenticated with the OIDC/OAuth2 strategy, Spring will generate a session identifier to match the authenticated context and send it to the browser as a cookie. Any subsequent request to the backend will have to contain the session cookie, from which Spring Security can retrieve the tokens associated with the specific user and validate the request.
+However, session cookies are not enough to validate requests, which are vulnerable to Cross-Site Request Forgery (CSRF) attacks. CSRF affects modifying HTTP requests like POST, PUT, and DELETE. An attacker could induce users to perform requests they didn't intend by forging a request meant to cause harm. Forged requests could do things like transfer money from your bank account or compromise critical data.
+WARNING Many online tutorials and guides show how to disable the CSRF protection as the first thing when configuring Spring Security. That's dangerous to do without explaining the reasoning or considering the consequences. I recommend keeping the protection enabled unless there's a good reason not to (you'll see one good reason in chapter 12). As a general guideline, browser-facing applications like Edge Service should be protected against CSRF attacks.
+Fortunately, Spring Security has built-in protection against such attacks. The protection is based on a so-called CSRF token generated by the framework that's provided to the client at the beginning of the session and required to be sent along with any statechanging requests.
+NOTE To learn more about CSRF protection in Spring Security, you can check out chapter 10 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where the subject is explained in great detail.
+In the previous section, you tried to log out, but the request failed. Since the logout operation is available through a POST request to the /logout endpoint, the application expects to receive the CSRF token generated by Spring Security for that user session. By default, the generated CSRF token is sent to the browser as an HTTP header.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+399
+
+However, Angular applications cannot work with that and expect to receive the token value as a cookie. Spring Security supports this specific requirement, but it's not enabled by default.
+You can instruct Spring Security to provide CSRF tokens as cookies through the csrf() DSL exposed by ServerHttpSecurity and the CookieServerCsrfTokenRepository class. For imperative applications, that would be enough. However, for reactive applications like Edge Service, you need to take an extra step to ensure the CsrfToken value is actually provided.
+In chapter 8, you learned that reactive streams need to be subscribed to in order to activate them. At the moment, CookieServerCsrfTokenRepository doesn't ensure a subscription to CsrfToken, so you must explicitly provide a workaround in a WebFilter bean. This problem should be solved in future versions of Spring Security (see issue 5766 on GitHub: https://mng.bz/XW89). For now, update the SecurityConfig class as follows.
+
+Listing 11.16 Configuring CSRF to support a cookie-based strategy for SPAs
+
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http ... .csrf(csrf -> csrf.csrfTokenRepository(
+
+Uses a cookie-based strategy for exchanging CSRF tokens with the Angular frontend
+
+CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+
+.build();
+
+}
+@Bean WebFilter csrfWebFilter() {
+
+A filter with the only purpose of subscribing to the CsrfToken reactive stream and ensuring its value is extracted correctly
+
+return (exchange, chain) -> {
+
+exchange.getResponse().beforeCommit(() -> Mono.defer(() -> {
+
+Mono<CsrfToken> csrfToken =
+
+exchange.getAttribute(CsrfToken.class.getName());
+
+return csrfToken != null ? csrfToken.then() : Mono.empty();
+
+}));
+
+return chain.filter(exchange);
+
+};
+
+}
+
+}
+
+Let's verify that the logout flow works now. Ensure that the Polar UI, Redis, and Keycloak containers are still up and running. Next, build and run the application (./gradlew bootRun), and then go to http://localhost:9000 from an incognito browser
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+400
+
+CHAPTER 11 Security: Authentication and SPA
+
+window. Start the authentication flow by clicking the Login button from the upperright menu. Then click the Logout button. Under the hood, Spring Security will now accept your logout request (Angular adds the CSRF token value from the cookie as an HTTP header), terminate your web session, propagate the request to Keycloak, and finally redirect you to the homepage, unauthenticated.
+Thanks to this change, you can also perform any POST, PUT, and DELETE requests without receiving a CSRF error. Feel free to explore the Angular application. If you start up Catalog Service and Order Service, you can try adding new books to the catalog, modifying them, or placing an order.
+Both Isabelle and Bjorn can perform any action at the moment, which is not what we want, since customers (like Bjorn) shouldn't be allowed to manage the book catalog. The next chapter will cover authorization, and you'll see how to protect each endpoint with different access policies. Before addressing authorization, though, we need to write autotests to cover the new functionality. That's coming up in the next section.
+Before moving on, stop the application with Ctrl-C and all the containers with docker-compose down (from polar-deployment/docker).
+11.6 Testing Spring Security and OpenID Connect
+The importance of writing autotests is usually apparent to developers. Still, things can get challenging when it comes to security, and it sometimes ends up not being covered by automated tests because of its complexity. Fortunately, Spring Security provides several utilities to help you include security in your slice and integration tests in a simple way.
+In this section, you'll learn how to use the WebTestClient support for Spring Security to test OIDC authentication and CSRF protection. Let's get started.
+11.6.1 Testing OIDC authentication
+In chapter 8, we tested REST controllers exposed by Spring WebFlux by relying on the @SpringWebFlux annotation and WebTestClient. In this chapter, we added a new controller (UserController), so let's write some autotests for it with different security setups.
+First of all, open your Edge Service project, create a UserControllerTests class annotated with @WebFluxTest(UserController.class) in src/test/java, and autowire a WebTestClient bean. So far, the setup is similar to what we used in chapter 8: a slice test for the web layer. But we need some extra setup to cover security scenarios, as shown in the following listing.
+
+Listing 11.17 Defining a class to test the security policies for UserController
+
+@WebFluxTest(UserController.class) @Import(SecurityConfig.class) class UserControllerTests {
+
+Imports the application's security configuration
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.6 Testing Spring Security and OpenID Connect
+
+401
+
+@Autowired WebTestClient webClient;
+@MockBean
+
+A mock bean to skip the interaction with Keycloak when retrieving information about the Client registration
+
+ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+}
+
+Since we configured Edge Service to return an HTTP 401 response when a request is unauthenticated, let's verify that happens when calling the /user endpoint without authenticating first:
+
+@Test void whenNotAuthenticatedThen401() {
+webClient .get() .uri("/user") .exchange() .expectStatus().isUnauthorized();
+}
+
+To test the scenario where a user is authenticated, we can use mockOidcLogin(), a configuration object supplied by SecurityMockServerConfigurers to mock an OIDC login, synthesize an ID Token, and mutate the request context in WebTestClient accordingly.
+The /user endpoint reads claims from the ID Token through the OidcUser object, so we need to build an ID Token with username, first name, and last name (the roles are hardcoded in the controller for now). The following code shows how to do that:
+
+Expects a User object with the same information
+as the currently authenticated
+user
+
+@Test void whenAuthenticatedThenReturnUser() {
+var expectedUser = new User("jon.snow", "Jon", "Snow", List.of("employee", "customer"));
+
+The expected authenticated user
+
+webClient .mutateWith(configureMockOidcLogin(expectedUser)) .get() .uri("/user") .exchange() .expectStatus().is2xxSuccessful() .expectBody(User.class) .value(user -> assertThat(user).isEqualTo(expectedUser));
+}
+
+Defines an authentication context based on OIDC and uses the expected user
+
+private SecurityMockServerConfigurers.OidcLoginMutator
+ configureMockOidcLogin(User expectedUser) {
+
+return SecurityMockServerConfigurers.mockOidcLogin().idToken(
+
+builder -> { builder.claim(StandardClaimNames.PREFERRED_USERNAME, expectedUser.username());
+
+Builds a mock ID Token
+
+builder.claim(StandardClaimNames.GIVEN_NAME,
+
+expectedUser.firstName());
+
+builder.claim(StandardClaimNames.FAMILY_NAME,
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+402
+
+CHAPTER 11 Security: Authentication and SPA
+
+expectedUser.lastName()); }); }
+
+Finally, run the tests as follows:
+
+$ ./gradlew test --tests UserControllerTests
+
+The testing utilities supplied by Spring Security cover a wide array of scenarios and integrate well with WebTestClient. In the next section, you'll see how to test CSRF protection using a similar approach.
+
+11.6.2 Testing CSRF
+In Spring Security, CSRF protection applies to all mutating HTTP requests by default (such as POST, PUT, and DELETE). As you saw in previous sections, Edge Service accepts POST requests to the /logout endpoint to initiate the logout flow, and such requests require a valid CSRF token to be executed. Furthermore, we configured the RP-Initiated Logout feature from OIDC, so a POST request to /logout will actually result in an HTTP 302 response, redirecting the browser to Keycloak to also log the user out of there.
+Create a new SecurityConfigTests class and use the same strategy you learned in the previous section to set up a Spring WebFlux test with security support, as shown in the following listing.
+
+Listing 11.18 Defining a class for testing the authentication flow
+
+@WebFluxTest @Import(SecurityConfig.class) class SecurityConfigTests {
+
+Imports the application security configuration
+
+@Autowired WebTestClient webClient;
+@MockBean
+
+A mock bean to skip the interaction with Keycloak when retrieving information about the Client registration
+
+ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+}
+
+Then add a test case to check whether the application returns an HTTP 302 response after sending an HTTP POST request to the /logout with the correct OIDC login and CSRF context.
+
+@Test void whenLogoutAuthenticatedAndWithCsrfTokenThen302() {
+when(clientRegistrationRepository.findByRegistrationId("test")) .thenReturn(Mono.just(testClientRegistration()));
+
+webClient .mutateWith( SecurityMockServerConfigurers.mockOidcLogin())
+
+Uses a mock ID Token to authenticate the user
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.6 Testing Spring Security and OpenID Connect
+
+403
+
+.mutateWith(SecurityMockServerConfigurers.csrf())
+
+.post()
+
+.uri("/logout") .exchange() .expectStatus().isFound(); }
+
+The response is a redirect to Keycloak to propagate the logout operation.
+
+Enhances the request to provide the required CSRF token
+
+private ClientRegistration testClientRegistration() {
+
+return ClientRegistration.withRegistrationId("test")
+
+.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+
+.clientId("test") .authorizationUri("https://sso.polarbookshop.com/auth")
+
+A mock ClientRegistration
+
+.tokenUri("https://sso.polarbookshop.com/token")
+
+used by Spring Security
+
+.redirectUri("https://polarbookshop.com")
+
+to get the URLs to
+
+.build();
+
+contact Keycloak
+
+}
+
+Finally, run the tests as follows:
+
+$ ./gradlew test --tests SecurityConfigTests
+
+As always, you can find more test examples in the source code repository accompanying this book. When it comes to security, unit and integration tests are critical for ensuring the correctness of an application, but they are not enough. Those tests cover the default security configuration, which might be different in production. That's why we also need security-oriented autotests in the acceptance stage of the deployment pipeline (as explained in chapter 3), to test applications deployed in a production-like environment.
+
+Polar Labs
+Until now, the only application supposed to be accessed by users directly was Edge Service. All the other Spring Boot applications interact with each other from within the environment where they are deployed.
+Service-to-service interactions within the same Docker network or Kubernetes cluster can be configured using the container name or the Service name respectively. For example, Edge Service forwards requests to Polar UI via the http://polar-ui:9004 URL on Docker (<container-name>:<container-port>) and via the http://polar-ui URL on Kubernetes (Service name).
+Keycloak is different because it's involved in service-to-service interactions (for now, those are just interactions with Edge Service) and also interactions with end users via the web browser. In production, Keycloak will be accessible via a public URL that both applications and users will use, so there will be no problem. How about in local environments?
+Since we don't deal with public URLs when working locally, we need to configure things differently. On Docker, we can solve the problem by using the http://host .docker.internal special URL configured automatically when installing the software. It resolves to your localhost IP address and can be used both within a Docker network and outside.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+404
+
+CHAPTER 11 Security: Authentication and SPA
+
+(continued) On Kubernetes, we don't have a generic URL to let Pods within a cluster access your local host. That means Edge Service will interact with Keycloak via its Service name (http://polar-keycloak). When Spring Security redirects a user to Keycloak to log in, the browser will return an error because the http://polar-keycloak URL cannot be resolved outside the cluster. To make that possible, we can update the local DNS configuration to resolve the polar-keycloak hostname to the cluster IP address. Then a dedicated Ingress will make it possible to access Keycloak when requests are directed to the polar-keycloak hostname.
+If you're on Linux or macOS, you can map the polar-keycloak hostname to the minikube local IP address in the /etc/hosts file. On Linux, the IP address is the one returned by the minikube ip --profile polar command (as explained in chapter 9). On macOS, it's going to be 127.0.0.1. Open a Terminal window, and run the following command (make sure you replace the <ip-address> placeholder with the cluster IP address, depending on your operating system):
+$ echo "<ip-address> polar-keycloak" | sudo tee -a /etc/hosts
+On Windows you must map the polar-keycloak hostname to 127.0.0.1 in the hosts file. Open a PowerShell window as an administrator, and run the following command:
+$ Add-Content C:\Windows\System32\drivers\etc\hosts "127.0.0.1 polarkeycloak"
+I have updated the scripts for deploying all the backing services for Polar Bookshop, including Keycloak and Polar UI. You can get them from the /Chapter11/11-end/polardeployment/kubernetes/platform/development folder in the code repository accompanying the book (https://github.com/ThomasVitale/cloud-native-spring-in-action) and copy them into the same path in your polar-deployment repository. The deployment also includes the configuration of a dedicated Ingress for Keycloak, accepting requests directed to the polar-keycloak hostname.
+At this point you can run the ./create-cluster.sh script (polar-deployment/ kubernetes/platform/development) to start a minikube cluster and deploy all the backing services for Polar Bookshop. If you're on Linux, you'll be able to access Keycloak directly. If you're on macOS or Windows, remember to run the minikube tunnel --profile polar command first. Either way, you can open a browser window and access Keycloak at polar-keycloak/ (include the final slash).
+Finally, try running the entire system on Kubernetes after updating the deployment scripts for Edge Service to configure the URLs for Polar UI and Keycloak. You can refer to the Chapter11/11-end folder in the code repository accompanying the book to check the final result (https://github.com/ThomasVitale/cloud-native-spring-in-action).
+The next chapter will expand on the subject of security. It will cover how to propagate the authentication context from Edge Service to the downstream applications, and how to configure authorization.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+405
+
+Summary
+ Access control systems require identification (who are you?), authentication (can you prove it's really you?), and authorization (what are you allowed to do?).
+ A common strategy for implementing authentication and authorization in cloud native applications is based on JWT as the data format, OAuth2 as the authorization framework, and OpenID Connect as the authentication protocol.
+ When using OIDC authentication, a Client application initiates the flow and delegates an Authorization Server for the actual authentication. Then the Authorization Server issues an ID Token to the Client.
+ The ID Token includes information about the user authentication.  Keycloak is an identity and access management solution that supports OAuth2
+and OpenID Connect and can be used as an Authorization Server.  Spring Security provides native support for OAuth2 and OpenID Connect, and
+you can use it to turn Spring Boot applications into OAuth2 Clients.  In Spring Security, you can configure both authentication and authorization in
+a SecurityWebFilterChain bean. To enable the OIDC authentication flow, you can use the oauth2Login() DSL.  By default, Spring Security exposes a /logout endpoint for logging a user out.  In an OIDC/OAuth2 context, we also need to propagate the logout request to the Authorization Server (such as Keycloak) to log the user out of there. We can do that via the RP-Initiated Logout flow supported by Spring Security via the OidcClientInitiatedServerLogoutSuccessHandler class.  When a secure Spring Boot application is the backend for an SPA, we need to configure CSRF protection through cookies and implement an authentication entry point that returns an HTTP 401 response when a request is not authenticated (as opposed to the default HTTP 302 response redirecting to the Authorization Server automatically).  The Spring Security Test dependency supplies several convenient utilities for testing security.  The WebTestClient bean can be enhanced by mutating its request context through a particular configuration for OIDC login and CSRF protection.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Security: Authorization and auditing
+This chapter covers
+ Authorization and roles with Spring Cloud Gateway and OAuth2
+ Protecting APIs with Spring Security and OAuth2 (imperative)
+ Protecting APIs with Spring Security and OAuth2 (reactive)
+ Protecting and auditing data with Spring Security and Spring Data
+In the previous chapter, I introduced access control systems for cloud native applications. You saw how to add authentication to Edge Service with Spring Security and OpenID Connect, manage the user session life cycle, and address CORS and CSRF concerns when integrating an Angular frontend with Spring Boot.
+By delegating the authentication step to Keycloak, Edge Service is not affected by the specific authentication strategy. For example, we used the login form feature offered by Keycloak, but we could also enable social login via GitHub or rely on an existing Active Directory to authenticate users. Edge Service only needs to support OIDC to verify that the authentication happened correctly and get information about the user via an ID Token.
+406
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+407
+
+There are still a few issues we haven't addressed. Polar Bookshop is a distributed system, and after a user authenticates successfully with Keycloak, Edge Service is supposed to interact with Catalog Service and Order Service on behalf of the user. How can we securely propagate the authentication context to the other system applications? This chapter will help you solve that problem using OAuth2 and Access Tokens.
+After dealing with authentication, we will address the authorization step. Right now, both customers and employees of Polar Bookshop can perform any action on the system. This chapter will walk you through a few authorization scenarios handled with OAuth2, Spring Security, and Spring Data:
+ We'll use a role-based access control (RBAC) strategy to protect the REST endpoints exposed by Spring Boot, depending on whether the user is a customer or an employee of the bookshop.
+ We'll configure data auditing to keep track of which user made what changes.  We'll enforce protection rules for data so that only its owner can access it.
+Finally, you'll explore how you can test those changes using Spring Boot, Spring Security, and Testcontainers.
+NOTE The source code for the examples in this chapter is available in the Chapter12/12-begin and Chapter12/12-end folders, containing the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+In the previous chapter, we added user authentication features to Polar Bookshop. Edge Service is the access point to the system, so it's an excellent candidate for addressing cross-cutting concerns like security. For that reason, we made it responsible for authenticating users. Edge Service initiates the authentication flow but delegates the actual authentication step to Keycloak using the OpenID Connect protocol.
+Once a user authenticates successfully with Keycloak, Edge Service receives an ID Token from Keycloak with information about the authentication event and initiates an authenticated session with the user's browser. At the same time, Keycloak also issues an Access Token, which is used to grant Edge Service access to downstream applications on behalf of the user as per OAuth2.
+OAuth2 is an authorization framework that enables an application (called a Client) to obtain limited access to a protected resource provided by another application (called a Resource Server) on behalf of a user. When a user authenticates with Edge Service and asks to access their book orders, OAuth2 provides a solution for Edge Service to retrieve orders from Order Service on behalf of that user. This solution relies on a trusted party (called an Authorization Server), which issues an Access Token to Edge Service and grants access to the user's book orders from Order Service.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+408
+
+CHAPTER 12 Security: Authorization and auditing
+
+You might recognize some of these roles from the OIDC authentication flow we adopted in the previous chapter. As anticipated, OIDC is an identity layer built on top of OAuth2 and relies on the same basic concepts:
+ Authorization Server--The entity responsible for authenticating users and issuing, refreshing, and revoking Access Tokens. In Polar Bookshop, this is Keycloak.
+ User--Also called the Resource Owner, this is the human logging in with the Authorization Server to get authenticated access to the Client application. It's also the human or service granting a Client access to the protected resources provided by a Resource Server. In Polar Bookshop, it's either a customer or an employee.
+ Client--The application requiring the user to be authenticated and asking the user for authorization to access protected resources on their behalf. It can be a mobile application, a browser-based application, a server-side application, or even a smart TV application. In Polar Bookshop, it's Edge Service.
+ Resource Server--This is the application hosting the protected resources a Client wants to access on the user's behalf. In Polar Bookshop, Catalog Service and Order Service are Resource Servers. Dispatcher Service is decoupled from the other applications and won't be accessed on behalf of the user. As a result, it won't participate in the OAuth2 setup.
+Figure 12.1 shows how the four actors are mapped into the Polar Bookshop architecture. Edge Service can access downstream applications on behalf of the user through an
+Access Token issued by Keycloak during the OIDC authentication phase. In this section, you'll see how to configure Spring Cloud Gateway in Edge Service to use the Access Token whenever a request is routed to Catalog Service and Order Service.
+In the previous chapter, we defined two users: Isabelle has both the employee and customer roles, while Bjorn has just the customer role. In this section, you'll also learn how to include that information in both ID Tokens and Access Tokens so Spring Security can read it and set up a role-based access control (RBAC) mechanism.
+NOTE In Polar Bookshop, the OAuth2 Client (Edge Service) and the OAuth2 Resource Servers (Catalog Service and Order Service) belong to the same system, but the same framework can be used when the OAuth2 Client is a thirdparty application. In fact, that was the original use case for OAuth2 and why it became so popular. Using OAuth2, services like GitHub or Twitter let you give third-party applications limited access to your account. For example, you could authorize a scheduling application to publish tweets on your behalf without exposing your Twitter credentials.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+409
+
+Polar UI [Container: NGINX]
+Provides an SPA to users
+
+Catalog Service [Container: Spring Boot]
+
+User [Person]
+A customer or an employee of the bookshop
+OAuth2 user
+
+Uses Uses
+
+Delivers to the user's web browser
+
+Provides functionality for managing books
+
+Edge Service [Container: Spring Boot]
+
+Forwards requests to [REST/HTTP] OAuth2 Resource Server
+
+Provides API gateway and cross-cutting concerns
+OAuth2 Client
+
+Forwards requests to [REST/HTTP]
+
+Delegates authentication and token management to
+
+Checks book details [REST/HTTP]
+Order Service [Container: Spring Boot]
+Provides functionality for purchasing books
+
+Keycloak [Container: Quarkus]
+
+OAuth2 Resource Server
+
+Provides identity and access management
+OAuth2 Authorization Server
+
+Polar Bookshop [Software System]
+
+Figure 12.1 How the OIDC/OAuth2 roles are assigned to the entities in the Polar Bookshop architecture
+
+12.1.1 Token relay from Spring Cloud Gateway to other services
+After a user successfully authenticates with Keycloak, Edge Service (the OAuth2 Client) receives an ID Token and an Access Token:
+ ID Token--This represents a successful authentication event and includes information about the authenticated user.
+ Access Token--This represents the authorization given to the OAuth2 Client to access protected data provided by an OAuth2 Resource Server on the user's behalf.
+In Edge Service, Spring Security uses the ID Token to extract information about the authenticated user, set up a context for the current user session, and make the data available through the OidcUser object. That's what you saw in the previous chapter.
+The Access Token grants Edge Service authorized access to Catalog Service and Order Service (the OAuth2 Resource Servers) on behalf of the user. After we secure both applications, Edge Service will have to include the Access Token in all requests
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+410
+
+CHAPTER 12 Security: Authorization and auditing
+
+routed to them as an Authorization HTTP header. Unlike ID Tokens, Edge Service doesn't read the Access Token's content because it's not the intended audience. It stores the Access Token received from Keycloak and then includes it as-is in any request to a protected endpoint downstream.
+This pattern is called token relay, and it's supported by Spring Cloud Gateway as a built-in filter, so you don't need to implement anything yourself. When the filter is enabled, the Access Token is included automatically in all requests sent to one of the downstream applications. Figure 12.2 illustrates how the token relay pattern works.
+
+Token relay: accessing OAuth2 resource servers on behalf of the user (Prerequisite: the user is already authenticated)
+
+Browser
+
+Edge Service (OAuth2 Client)
+
+Order Service (OAuth2 Resource Server)
+
+Can I see my orders?
+
+Give me the orders for this user.
+GET /orders
+
+Give me the orders for this user. Here's the Access Token.
+GET /orders Authorization: Bearer <token>
+Here's the orders for the user. 200 OK
+
+Validate the token signature.
+
+Here's the orders for the user. 200 OK
+
+Figure 12.2 After a user is authenticated, Edge Service relays the Access Token to Order Service to call its protected endpoints on behalf of the user.
+
+Let's see how we can configure the Access Token relay in Edge Service.
+NOTE An Access Token has a validity period configured in Keycloak, and it should be as short as possible to reduce the exploitation time window in case the token gets leaked. An acceptable length is 5 minutes. When the token expires, the OAuth2 Client can ask the Authorization Server for a new one using a third type of token called a Refresh Token (which also has a validity period). The refresh mechanism is handled by Spring Security transparently, and I won't describe it further.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+411
+
+ADOPTING THE TOKEN RELAY PATTERN IN SPRING CLOUD GATEWAY Spring Cloud Gateway implements the token relay pattern as a filter. In the Edge Service project (edge-service), open the application.yml file and add TokenRelay as a default filter, since we want it applied to all routes.
+
+Listing 12.1 Enabling the token relay pattern in Spring Cloud Gateway
+
+spring: cloud: gateway: default-filters: - SaveSession - TokenRelay
+
+Enables the propagation of the Access Token when calling a downstream service
+
+With the filter enabled, Spring Cloud Gateway takes care of propagating the right Access Token as an Authorization header in all outgoing requests to Catalog Service and Order Service. For example:
+GET /orders Authorization: Bearer <access_token>
+
+NOTE Unlike ID Tokens which are JWTs, the OAuth2 framework doesn't enforce a data format for Access Tokens. They can be of any String-based form. The most popular format is JWT, though, so that's how we'll parse Access Tokens on the consumer side (Catalog Service and Order Service).
+By default, Spring Security stores the Access Tokens for the currently authenticated users in memory. When you have multiple instances of Edge Service running (which is always true in a cloud production environment to ensure high availability), you will encounter issues due to the statefulness of the application. Cloud native applications should be stateless. Let's fix that.
+STORING ACCESS TOKENS IN REDIS
+Spring Security stores Access Tokens in an OAuth2AuthorizedClient object that is accessible through a ServerOAuth2AuthorizedClientRepository bean. The default implementation for that repository adopts an in-memory strategy for persistence. That's what makes Edge Service a stateful application. How can we keep it stateless and scalable?
+A simple way to do that is to store OAuth2AuthorizedClient objects in the web session rather than in memory so that Spring Session will pick them up automatically and save them in Redis, just like it does with ID Tokens. Fortunately, the framework already provides an implementation of the ServerOAuth2AuthorizedClientRepository interface to save data in the web session: WebSessionServerOAuth2AuthorizedClientRepository. Figure 12.3 illustrates how all the mentioned objects are related to each other.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+412
+
+CHAPTER 12 Security: Authorization and auditing
+
+How Spring Security stores Access Tokens in the web session
+
+ServerOAuth2AuthorizedClientRepository
+
+Gives access to
+
+OAuth2AuthorizedClient
+
+Implements
+
+Contains
+
+WebSessionServerOAuth2AuthorizedClientRepository
+
+OAuth2AccessT oken (Access Token)
+
+Figure 12.3 The main classes involved in storing an Access Token for the currently authenticated user in Spring Security
+
+In the Edge Service project, open the SecurityConfig class and define a bean of type ServerOAuth2AuthorizedClientRepository using the implementation that stores Access Tokens in the web session.
+
+Listing 12.2 Saving OAuth2AuthorizedClient objects in the web session
+
+@EnableWebFluxSecurity public class SecurityConfig {
+@Bean
+
+Defines a repository to store Access Tokens in the web session
+
+ServerOAuth2AuthorizedClientRepository authorizedClientRepository() {
+
+return new WebSessionServerOAuth2AuthorizedClientRepository();
+
+}
+
+... }
+
+WARNING Access Tokens defined as JWTs should be handled with care. They are bearer tokens, meaning that any application can use them in an HTTP request and get access to an OAuth2 Resource Server. Handling the OIDC/ OAuth2 flow in the backend rather than in an SPA provides better security because we don't expose any tokens to the browser. However, there might be other risks to manage, so carefully consider the trust boundaries of your system.
+In the next section you'll see how to enhance ID Tokens and Access Tokens to propagate information about user roles.
+12.1.2 Customizing tokens and propagating user roles
+Both ID Tokens and Access Tokens can include different information about the user, which is formatted as claims in the JWT. Claims are simple key/value pairs in JSON format. For example, OpenID Connect defines several standard claims to carry information about the user, like given_name, family_name, preferred_username, and email.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+413
+
+Access to such claims is controlled through scopes, a mechanism provided by OAuth2 to limit what data an OAuth2 Client can access. You can think of scopes as roles assigned to applications rather than to users. In the previous chapter, we used Spring Security to make Edge Service an OAuth2 Client and configured it with the openid scope. That scope grants Edge Service access to the authenticated user's identity (provided in the sub claim).
+Perhaps you have logged in to a third-party website using GitHub or Google (a social login based on OAuth2). If you did, you might have noticed that right after the authentication step, the service prompted you with a second request about what information from your GitHub or Google account you consented to allow the third party to access. That consent functionality is based on scopes, granting the third party (the OAuth2 Client) specific permissions depending on what scopes have been assigned.
+Regarding Edge Service, we can decide upfront what scopes it should be granted. This section will show you how to configure a roles claim with the list of roles assigned to the authenticated user. Then you'll use a roles scope to grant Edge Service access to that claim and instruct Keycloak to include it in both ID Tokens and Access Tokens.
+Before moving on, you'll need a Keycloak container up and running. Open a Terminal window, navigate to the folder where you keep your Docker Compose file, and run the following command:
+$ docker-compose up -d polar-keycloak
+If you haven't followed along, you can refer to Chapter12/12-begin/polar-deployment/ docker/docker-compose.yml in the accompanying repository.
+NOTE Later I'll provide you with a JSON file you can use to load the entire configuration when starting up the Keycloak container without being concerned with its persistence (as I did in the previous chapter). If you want to follow this second option directly, I still invite you to read through this section, since it provides the essential information you'll need when moving on to the Spring Security part of the chapter.
+CONFIGURING ACCESS TO USER ROLES IN KEYCLOAK Keycloak comes preconfigured with a roles scope you can use to give an application access to the user roles contained in a roles claim. However, the default representation of the roles list is not very convenient to use because it's defined as a nested object. Let's change that.
+Once Keycloak is up and running, open a browser window, head to http://localhost:8080, log in to the administration console with the same credentials defined in the Docker Compose file (user/password), and choose the PolarBookshop realm. Then select Client Scopes from the left menu. On the new page (figure 12.4), you'll find a list of all the preconfigured scopes in Keycloak, and you have the option to create
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+
