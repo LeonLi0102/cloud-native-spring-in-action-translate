@@ -2,10 +2,11 @@
 
 本章内容：
 
-* 实现分布式追踪
-* 使用 Micrometer 收集指标
-* 集成 Prometheus 和 Grafana
-* 使用 Spring Boot Actuator 监控应用
+* 使用 Spring Boot 实现日志记录
+* 使用 Spring Boot Actuator 实现健康探针
+* 使用 Prometheus 和 Grafana 实现指标监控
+* 使用 OpenTelemetry 和 Tempo 实现分布式追踪
+* 使用 Spring Boot Actuator 管理和监控应用
 
 可观测性是系统能够从外部输出推断其内部状态的程度。在云原生环境中，可观测性由三个支柱组成：日志（Logs）、指标（Metrics）和追踪（Traces）。
 

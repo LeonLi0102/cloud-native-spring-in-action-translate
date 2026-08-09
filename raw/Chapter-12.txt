@@ -1,0 +1,2862 @@
+11.2 Managing user accounts with Keycloak
+
+373
+
+11.2.2 Managing users and roles
+We'll need some users to test different authentication scenarios. As anticipated in chapter 2, Polar Bookshop has two types of users: customers and employees.
+ Customers can browse books and purchase them.  Employees can also add new books to the catalog, modify the existing ones, and
+delete them.
+To manage the different permissions associated with each type of user, let's create two roles: customer and employee. Later you'll protect application endpoints based on those roles. It's an authorization strategy called role-based access control (RBAC).
+First, create the two roles in the Polar Bookshop realm from the Keycloak Admin CLI console you have used so far:
+
+$ ./kcadm.sh create roles -r PolarBookshop -s name=employee $ ./kcadm.sh create roles -r PolarBookshop -s name=customer
+
+Then create two users. Isabelle Dahl will be both an employee and a customer of the bookshop (username: isabelle). You can create an account for her as follows:
+
+The user should be
+active.
+
+$ ./kcadm.sh create users -r PolarBookshop \
+
+-s username=isabelle \ -s firstName=Isabelle \ -s lastName=Dahl \ -s enabled=true
+
+The username for the new user. It will be used for logging in.
+
+$ ./kcadm.sh add-roles -r PolarBookshop \
+
+--uusername isabelle \ --rolename employee \ --rolename customer
+
+Isabelle is both an employee and a customer.
+
+Then do the same for Bjorn Vinterberg (username: bjorn), a customer of the bookshop:
+
+The user should be
+active.
+
+$ ./kcadm.sh create users -r PolarBookshop \
+
+-s username=bjorn \ -s firstName=Bjorn \ -s lastName=Vinterberg \ -s enabled=true
+
+The username for the new user. It will be used for logging in.
+
+$ ./kcadm.sh add-roles -r PolarBookshop \
+
+--uusername bjorn \ --rolename customer
+
+Bjorn is a customer.
+
+In a real scenario, users would choose a password themselves and preferably enable two-factor authentication. Isabelle and Bjorn are test users, so assigning an explicit password (password) is OK. You can do that from the Keycloak Admin CLI as follows:
+
+$ ./kcadm.sh set-password -r PolarBookshop \ --username isabelle --new-password password
+$ ./kcadm.sh set-password -r PolarBookshop \ --username bjorn --new-password password
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+374
+
+CHAPTER 11 Security: Authentication and SPA
+
+That's it for user management. You can get out of the bash console inside the Keycloak container with the exit command, but keep Keycloak running.
+Next, let's explore how we can improve the authentication strategy in Edge Service.
+
+11.3
+
+Authentication with OpenID Connect, JWT, and Keycloak
+At the moment, users must log in via a browser with a username and password. Since Keycloak now manages user accounts, we could go ahead and update Edge Service to check the user credentials with Keycloak itself, rather than using its internal storage. But what happens if we introduce different clients to the Polar Bookshop system, such as mobile applications and IoT devices? How should the users authenticate then? What if the bookshop employees are already registered in the company's Active Directory (AD) and want to log in via SAML? Can we provide a single sign-on (SSO) experience across different applications? Will the users be able to log in via their GitHub or Twitter accounts (social login)?
+We could think of supporting all those authentication strategies in Edge Service as we get new requirements. However, that is not a scalable approach. A better solution is delegating a dedicated identity provider to authenticate users following any supported strategy. Edge Service would then use that service to verify the identity of a user without being concerned about performing the actual authentication step. The dedicated service could let users authenticate in various ways, such as using the credentials registered in the system, through social login, or via SAML to rely on the identity defined in the company's AD.
+Using a dedicated service to authenticate users leads to two aspects we need to address for the system to work. First, we need to establish a protocol for Edge Service to delegate user authentication to the identity provider and for the latter to provide information about the authentication result. Second, we need to define a data format that the identity provider can use to securely inform Edge Service about the identity of users after they have been successfully authenticated. This section will address both issues using OpenID Connect and JSON Web Token.
+
+11.3.1 Authenticating users with OpenID Connect
+OpenID Connect (OIDC) is a protocol that enables an application (called the Client) to verify the identity of a user based on the authentication performed by a trusted party (called an Authorization Server) and retrieve the user profile information. The authorization server informs the Client application about the result of the authentication step via an ID Token.
+OIDC is an identity layer on top of OAuth2, an authorization framework that solves the problem of delegating access using tokens for authorization but doesn't deal with authentication. As you know, authorization can only happen after authentication. That's why I decided to cover OIDC first; OAuth2 will be further explored in the next chapter. This is not the typical way of covering those subjects, but I think
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+375
+
+it makes sense when designing an access control system like we're doing for Polar Bookshop.
+NOTE This book will only cover some essential aspects of OAuth2 and OIDC. If you're interested in learning more about them, Manning has a couple of books in its catalog on the subject: OAuth 2 in Action by Justin Richer and Antonio Sanso (Manning, 2017) and OpenID Connect in Action by Prabath Siriwardena (Manning, 2022).
+When it comes to handling user authentication, we can identify three main actors in the OAuth2 framework that are used by the OIDC protocol:
+ Authorization Server--The entity responsible for authenticating users and issuing tokens. In Polar Bookshop, this will be Keycloak.
+ User--Also called the Resource Owner, this is the human logging in with the Authorization Server to get authenticated access to the Client application. In Polar Bookshop, it's either a customer or an employee.
+ Client--The application requiring the user to be authenticated. This can be a mobile application, a browser-based application, a server-side application, or even a smart TV application. In Polar Bookshop, it's Edge Service.
+Figure 11.2 shows how the three actors are mapped to the Polar Bookshop architecture.
+
+User [Person]
+A customer or an employee of the bookshop
+OAuth2 User
+
+Uses Uses
+
+Edge Service [Container: Spring Boot]
+Provides API gateway and cross-cutting concerns
+OAuth2 Client
+Delegates authentication and token management to
+
+Keycloak [Container: Quarkus] Provides identity and access
+management
+OAuth2 Authorization Server
+Polar Bookshop [Software System]
+
+Figure 11.2 How the OIDC/OAuth2 roles are assigned to the entities in the Polar Bookshop architecture for user authentication
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+376
+
+CHAPTER 11 Security: Authentication and SPA
+
+NOTE The roles defined by the OAuth2 framework are also known by different names when used in the context of OpenID Connect. The OAuth2 Authorization Server is also called the OIDC Provider. The OAuth2 Client, which relies on the Authorization Server for authentication and token issuing, is also called the Relying Party (RP). The OAuth2 User is also called the End-User. We'll stick to the OAuth2 naming for consistency, but it's helpful to know the alternative terminology used in OIDC.
+In Polar Bookshop, Edge Service will initiate the user login flow, but then it will delegate the actual authentication step to Keycloak via the OIDC protocol (supported out of the box by Spring Security). Keycloak provides several authentication strategies, including traditional login forms, social logins via providers like GitHub or Twitter, and SAML. It also supports two-factor authentication (2FA). In the following sections, we'll use the login form strategy as an example. Since users will interact directly with Keycloak to log in, their credentials will never be exposed to any component of the system except Keycloak, which is one of the benefits of adopting such a solution.
+When an unauthenticated user calls a secure endpoint exposed by Edge Service, the following happens:
+1 Edge Service (the Client) redirects the browser to Keycloak (the Authorization Server) for authentication.
+2 Keycloak authenticates the user (for example, by asking for a username and password via a login form) and then redirects the browser back to Edge Service, together with an Authorization Code.
+3 Edge Service calls Keycloak to exchange the Authorization Code with an ID Token, containing information about the authenticated user.
+4 Edge Service initializes an authenticated user session with the browser based on a session cookie. Internally, Edge Service maintains a mapping between the session identifier and ID Token (the user identity).
+NOTE The authentication flow supported by OIDC is based on the OAuth2 Authorization Code flow. The second step might seem redundant, but the Authorization Code is essential for ensuring that only the legitimate Client can exchange it with tokens.
+Figure 11.3 describes the essential parts of the authentication flow supported by the OIDC protocol. Even if Spring Security supports that out of the box, and you won't need to implement any of it yourself, it's still beneficial to have an overview of the flow in mind.
+When adopting the authentication flow illustrated in figure 11.3, Edge Service is not affected by the specific authentication strategy. We could configure Keycloak to use an Active Directory or perform a social login via GitHub, and Edge Service would not require any changes. It only needs to support OIDC to verify that the authentication happened correctly and get information about the user via an ID Token. What's
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+377
+
+Authentication flow with OIDC
+
+Browser
+
+Edge Service
+
+I want to see the list of books.
+
+Please, give me the list of books. GET /books
+First, you need to log in. 302 Redirect to Keycloak
+
+Keycloak
+
+Authenticate the user.
+
+Please, provide credentials.
+
+Here's my username and password.
+[Username/Password]
+
+Use these credentials to authenticate the user.
+[Username/Password]
+
+Done. Now go back to the application.
+302 Redirect to Edge Service + [Authorization Code]
+
+Check credentials and generate Authorization Code.
+
+Follow redirect. [Authorization Code]
+Authentication complete. Use this session cookie for future requests.
+302 Redirect + [Session Cookie]
+
+Exchange Authorization Code for ID Token. [Authorization Code]
+Here's the ID Token. [ID Token]
+
+Validate the request.
+
+Initialize the user session and map it to the ID Token.
+
+Please, give me the list of books. GET /books + [Session Cookie] Here's the list of books. 200 OK
+
+Figure 11.3 The authentication flow supported by the OIDC protocol
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+378
+
+CHAPTER 11 Security: Authentication and SPA
+
+an ID Token? It's a JSON Web Token (JWT) containing information about the user authentication event. We'll take a closer look at JWTs in the next section.
+NOTE Whenever I mention OIDC, I am referring to the OpenID Connect Core 1.0 specification (https://openid.net/specs/openid-connect-core-1_0.html). Whenever I mention OAuth2, unless specified otherwise, I am referring to the OAuth 2.1 specification currently under standardization (https://oauth .net/2.1) and meant to replace the OAuth 2.0 standard described in RFC 6749 (https://tools.ietf.org/html/rfc6749).
+
+11.3.2 Exchanging user information with JWT
+In distributed systems, including microservices and cloud native applications, the most-used strategy for exchanging information about an authenticated user and their authorization is through tokens.
+JSON Web Token (JWT) is an industry-standard for representing claims to be transferred between two parties. It's a widely used format for propagating information about an authenticated user and their permissions securely among different parties in a distributed system. A JWT is not used by itself, but it's included in a larger structure, the JSON Web Signature (JWS), which ensures the integrity of the claims by digitally signing the JWT object.
+A digitally signed JWT (JWS) is a string composed of three parts encoded in Base64 and separated by a dot (.) character:
+
+<header>.<payload>.<signature>
+
+NOTE For debugging purposes, you can use the tool available on https:// jwt.io to encode and decode tokens.
+
+As you saw, a digitally signed JWT has three parts:
+
+ Header--A JSON object (called JOSE Header) containing information about the cryptographic operations performed on the payload. The operations follow the standards from the Javascript Object Signing and Encryption (JOSE) framework. A decoded header looks like this:
+
+{ "alg": "HS256", "typ": "JWT"
+}
+
+The algorithm used to sign the token digitally
+The type of token
+
+ Payload--A JSON object (called Claims Set) containing the claims conveyed by the token. The JWT specification defines some standard claim names, but you can also define your own. A decoded payload looks like the following:
+
+{ "iss": "https://sso.polarbookshop.com",
+
+The entity that issued the JWT (the issuer)
+
+"sub": "isabelle",
+
+The entity that is the subject
+
+of the JWT (the end-user)
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+379
+
+"exp": 1626439022 }
+
+When the JWT expires (a timestamp)
+
+ Signature--The signature of the JWT, ensuring that the claims have not been tampered with. A prerequisite of using a JWS structure is that we trust the entity issuing the token (the issuer), and we have a way to check its validity.
+
+When a JWT requires integrity and confidentiality, it's first signed as a JWS and then encrypted with JSON Web Encryption (JWE). In this book, we'll use only JWS.
+
+NOTE If you're interested in learning more about JWT and its related aspects, you can refer to the IETF standard specifications. JSON Web Token (JWT) is documented in RFC 7519 (https://tools.ietf.org/html/rfc7519), JSON Web Signature (JWS) is described in RFC 7515 (https://tools.ietf.org/ html/rfc7515), and JSON Web Encryption (JWE) is presented in RFC 7516 (https://tools.ietf.org/html/rfc7516). You might also be interested in JSON Web Algorithms (JWA), which defines the available cryptographic operations for JWTs and is detailed in RFC 7518 (https://tools.ietf.org/html rfc7518).
+In the case of Polar Bookshop, Edge Service can delegate the authentication step to Keycloak. After authenticating the user successfully, Keycloak will send a JWT to Edge Service with information about the newly authenticated user (ID Token). Edge Service will validate the JWT through its signature and inspect it to retrieve data (claims) about the user. Finally, it will establish an authenticated session with the user's browser based on a session cookie, whose identifier is mapped to the JWT.
+To delegate authentication and retrieve tokens securely, Edge Service must be registered as an OAuth2 Client in Keycloak. Let's see how.
+
+11.3.3 Registering an application in Keycloak
+As you learned in the previous sections, an OAuth2 Client is an application that can request user authentication and ultimately receive tokens from an Authorization Server. In the Polar Bookshop architecture, this role is played by Edge Service. When using OIDC/OAuth2, you need to register each OAuth2 Client with the Authorization Server before using it for authenticating users.
+Clients can be public or confidential. We register an application as a public Client if it can't keep a secret. For example, mobile applications would be registered as public Clients. On the other hand, confidential Clients are those that can keep a secret, and they are usually backend applications like Edge Service. The registration process is similar either way. The main difference is that confidential Clients are required to authenticate themselves with the Authorization Server, such as by relying on a shared secret. It's an additional protection layer we can't use for public Clients, since they have no way to store the shared secret securely.
+Since Edge Service will be the OAuth2 Client in the Polar Bookshop system, let's register it with Keycloak. We can rely on the Keycloak Admin CLI one more time.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+380
+
+CHAPTER 11 Security: Authentication and SPA
+
+The Client dilemma in OAuth2
+The Client role can be assigned either to a frontend or a backend application. The main difference is the level of security of the solution. The Client is the entity that will receive tokens from the Authorization Server. The Client will have to store them somewhere to be used in subsequent requests from the same user. Tokens are sensitive data that should be secured, and there's no better place than a backend application to do that. But it's not always possible.
+Here is my rule of thumb. If the frontend is a mobile or desktop application like iOS or Android, that will be the OAuth2 Client, and it will be categorized as a public Client. You can use libraries like AppAuth (https://appauth.io) to add support for OIDC/ OAuth2 and store the tokens as securely as possible on the device. If the frontend is a web application (like in Polar Bookshop), then a backend service should be the Client. In this case, it would be categorized as a confidential Client.
+The reason for this distinction is that no matter how much you try to hide the OIDC/OAuth2 tokens in the browser (cookies, local storage, session storage), they will always be at risk of being exposed and misused. "From a security perspective, it is virtually impossible to secure tokens in a frontend web application." That's what application security expert Philippe De Ryck writes,a recommending engineers rely on the backend-for-frontend pattern and have a backend application deal with tokens instead.
+I recommend basing the interaction between browser and backend on a session cookie (like you'd do for monoliths) and have the backend application be responsible for controlling the authentication flow and using the tokens issued by the Authorization Server, even in the case of SPAs. That is the current best practice recommended by security experts.
+a P. De Ryck, "A Critical Analysis of Refresh Token Rotation in Single-page Applications," Ping Identity blog, March 18, 2021, http://mng.bz/QWG6.
+Make sure the Keycloak container you started earlier is still running. Then open a Terminal window and enter a bash console inside the Keycloak container:
+$ docker exec -it polar-keycloak bash
+Next, navigate to the folder where the Keycloak Admin CLI scripts are located:
+$ cd /opt/keycloak/bin
+As you learned earlier, the Admin CLI is protected by the username and password we defined in Docker Compose for the Keycloak container, so we need to start an authenticated session before running any other commands:
+$ ./kcadm.sh config credentials --server http://localhost:8080 \ --realm master --user user --password password
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.3 Authentication with OpenID Connect, JWT, and Keycloak
+
+381
+
+Finally, register Edge Service as an OAuth2 Client in the PolarBookshop realm:
+
+It must be enabled.
+Edge Service is a confidential
+client, not public.
+
+$ ./kcadm.sh create clients -r PolarBookshop \
+
+-s clientId=edge-service \ -s enabled=true \ -s publicClient=false \
+
+The OAuth2 Client identifier
+
+-s secret=polar-keycloak-secret \
+-s 'redirectUris=["http://localhost:9000",
+"http://localhost:9000/login/oauth2/code/*"]'
+
+Since it's a confidential client, it needs a secret to authenticate with Keycloak.
+
+The application URLs to which Keycloak is authorized to redirect a request after a user login or logout
+
+The valid redirect URLs are the endpoints exposed by the OAuth2 Client application (Edge Service) where Keycloak will redirect authentication requests. Since Keycloak can include sensitive information in a redirect request, we want to limit which applications and endpoints are authorized to receive such information. As you'll learn later, the redirect URL for authentication requests will be http://localhost:9000/login/ oauth2/code/*, following the default format provided by Spring Security. To support redirects after logout operations, we also need to add http://localhost:9000 as a valid redirect URL.
+That's it for this section. In the source code repository accompanying the book, I included a JSON file you can use to load the entire configuration when starting up the Keycloak container in the future (Chapter11/11-end/polar-deployment/ docker/keycloak/realm-config.json). Now that you've familiarized yourself with Keycloak, you can update the container definition to ensure you always have the needed configuration at startup. Copy the JSON file over the same path in your own project, and update the polar-keycloak service in your docker-compose.yml file as follows.
+
+Listing 11.4 Importing realm configuration in Keycloak container
+
+version: "3.8" services:
+...
+
+polar-keycloak: image: quay.io/keycloak/keycloak:19.0 container_name: "polar-keycloak" command: start-dev --import-realm volumes: - ./keycloak:/opt/keycloak/data/import environment: - KEYCLOAK_ADMIN=user - KEYCLOAK_ADMIN_PASSWORD=password ports: - 8080:8080
+
+Imports the provided configuration at startup time
+Configures a volume to load the configuration file into the container
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+382
+
+CHAPTER 11 Security: Authentication and SPA
+
+Why Keycloak
+I decided to use Keycloak since it's a mature, open source solution for running an Authorization Server yourself. After increasing demands from the community, Spring started a new Spring Authorization Server project (https://github.com/spring-projects/ spring-authorization-server). Since version 0.2.0, it's been a production-ready solution for setting up an OAuth2 Authorization Server. At the time of writing, the project provides an implementation for the most common OAuth2 features, and it's currently working on extending support for OIDC-specific features. You can follow the progress and contribute to the project on GitHub.
+Another option is to use a SaaS solution like Okta (www.okta.com) or Auth0 (https:// auth0.com). They are both excellent solutions for getting OIDC/OAuth2 as a managed service, and I encourage you to try them out. For this book, I wanted to use a solution that you could run and reliably reproduce in your local environment without depending on other services that might change over time, making my instructions here invalid.
+
+Before moving on, let's stop any running containers. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/ docker/docker-compose.yml), and run the following command:
+
+$ docker-compose down
+
+We now have all the pieces for refactoring Edge Service so it can use an authentication strategy relying on OIDC/OAuth2, JWT, and Keycloak. The best part is that it's based on standards and supported by all major languages and frameworks (frontend, backend, mobile, IoT), including Spring Security.
+
+11.4
+
+Authenticating users with Spring Security and OpenID Connect
+As mentioned earlier, Spring Security supports several authentication strategies. The current security setup for Edge Service handles user accounts and authentication via a login form provided by the application itself. Now that you've learned about OpenID Connect, we can refactor the application to delegate user authentication to Keycloak via the OIDC protocol.
+Support for OAuth2 used to be in a separate project called Spring Security OAuth, which you would use as part of Spring Cloud Security to adopt OAuth2 in a cloud native application. Both of those projects have now been deprecated in favor of the native, more comprehensive support for OAuth2 and OpenID Connect introduced in the main Spring Security project, starting from version 5. This chapter focuses on using the new OIDC/OAuth2 support in Spring Security 5 to authenticate the users of Polar Bookshop.
+
+NOTE If you find yourself working on a project using the deprecated Spring Security OAuth and Spring Cloud Security projects, you might want to check
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+383
+
+out chapters 12 through 15 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where they are explained in great detail.
+Using Spring Security and its OAuth2/OIDC support, this section will show you how to do the following for Edge Service:
+ Use OpenID Connect to authenticate users.  Configure user logout.  Extract information about the authenticated user.
+Let's get started!
+11.4.1 Adding the new dependencies
+First of all, we need to update the dependencies for Edge Service. We can replace the existing Spring Security starter dependency with the more specific OAuth2 Client one, which adds support for OIDC/OAuth2 client features. Furthermore, we can add the Spring Security Test dependency, which provides additional support for testing security scenarios in Spring.
+Open the build.gradle file for the Edge Service project (edge-service) and add the new dependencies. Remember to refresh or reimport the Gradle dependencies after the new addition.
+Listing 11.5 Adding dependencies for Spring Security OAuth2 Client
+dependencies { ... implementation
+ 'org.springframework.boot:spring-boot-starter-oauth2-client'
+testImplementation 'org.springframework.security:spring-security-test' }
+
+Spring integration with Keycloak
+When choosing Keycloak as the Authorization Server, an alternative to the native OpenID Connect/OAuth2 support provided by Spring Security was the Keycloak Spring Adapter. It was a library supplied by the Keycloak project itself to integrate with Spring Boot and Spring Security, but it was retired after the release of Keycloak 17.
+If you find yourself working on a project using the Keycloak Spring Adapter, you might want to check out my articles on the subject (www.thomasvitale.com/tag/keycloak) or chapter 9 of Spring Microservices in Action, second edition, by John Carnell and Illary Huaylupo Sánchez (Manning, 2021).
+
+11.4.2 Configuring the integration between Spring Security and Keycloak
+After adding the relevant dependencies on Spring Security, we need to configure the integration with Keycloak. In the previous section we registered Edge Service in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+384
+
+CHAPTER 11 Security: Authentication and SPA
+
+Keycloak as an OAuth2 Client, defining both a client identifier (edge-service) and a shared secret (polar-keycloak-secret). Now we'll use that information to tell Spring Security how to interact with Keycloak.
+Open the application.yml file in your Edge Service project, and add the following configuration.
+
+Listing 11.6 Configuring Edge Service as an OAuth2 Client
+
+spring: security: oauth2:
+
+The name identifying the Client registration in Spring Security (called "registrationId"). It can be any string.
+
+client:
+
+The shared secret used by
+the Client to authenticate with Keycloak
+
+registration: keycloak: client-id: edge-service
+
+The OAuth2 Client identifier as defined in Keycloak
+
+client-secret: polar-keycloak-secret
+
+scope: openid provider:
+
+The list of scopes the Client would like to have access to. The openid scope triggers
+
+keycloak:
+
+OIDC authentication on top of OAuth2.
+
+issuer-uri:
+
+http://localhost:8080/realms/PolarBookshop
+
+The same name used as "registrationId" a few lines above
+
+The Keycloak URL providing information about all the relevant OAuth2 and OIDC
+endpoints for the specific realm
+
+Each Client registration in Spring Security must have an identifier (registrationId). In this example, it's keycloak. The registration identifier is used to build the URL where Spring Security receives the Authorization Code from Keycloak. The default URL template is /login/oauth2/code/{registrationId}. For Edge Service, the full URL is http://localhost:9000/login/oauth2/code/keycloak, which we already configured in Keycloak as a valid redirect URL.
+Scopes are an OAuth2 concept for limiting an application's access to user resources. You can think of them as roles, but for applications instead of users. When we use the OpenID Connect extension on top of OAuth2 to verify the user's identity, we need to include the openid scope to inform the Authorization Server and receive an ID Token containing data about the user authentication. The next chapter will explain more about scopes in the context of authorization.
+Now that we've defined the integration with Keycloak, let's configure Spring Security to apply the desired security policies.
+
+11.4.3 Basic Spring Security configuration
+The central place for defining and configuring security policies in Spring Security is a SecurityWebFilterChain class. Edge Service is currently configured to require user authentication for all endpoints, and it uses an authentication strategy based on a login form. Let's change that to use OIDC authentication instead.
+The ServerHttpSecurity object provides two ways of configuring an OAuth2 Client in Spring Security. With oauth2Login(), you can configure an application to act as
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+385
+
+an OAuth2 Client and also authenticate users through OpenID Connect. With oauth2Client(), the application will not authenticate users, so it's up to you to define another authentication mechanism. We want to use OIDC authentication, so we'll use oauth2Login() and the default configuration. Update the SecurityConfig class as follows.
+
+Listing 11.7 Requiring authentication for all endpoints through OIDC
+@EnableWebFluxSecurity public class SecurityConfig {
+
+@Bean SecurityWebFilterChain springSecurityFilterChain(
+ServerHttpSecurity http ){
+return http .authorizeExchange(exchange -> exchange.anyExchange().authenticated()) .oauth2Login(Customizer.withDefaults()) .build();
+} }
+
+Enables user authentication with OAuth2/OpenID Connect
+
+Let's verify that this works correctly. First, start the Redis and Keycloak containers. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command:
+
+$ docker-compose up -d polar-redis polar-keycloak
+
+Then run the Edge Service application (./gradlew bootRun), open a browser window, and head to http://localhost:9000. You should be redirected to a login page served by Keycloak, where you can authenticate as one of the users we created previously (figure 11.4).
+For example, log in as Isabelle (isabelle/password) and pay attention to how Keycloak redirects you back to Edge Service after validating the provided credentials. Since Edge Service doesn't expose any content through the root endpoint, you'll see an error message ("Whitelabel Error Page"). But don't worry! That's where we'll integrate an Angular frontend later. The crucial point of this test is that Edge Service required you to be authenticated before accessing any of its endpoints, and it triggered the OIDC authentication flow.
+When you're done trying out the OIDC authentication flow, stop the application with Ctrl-C.
+If the authentication is successful, Spring Security will start an authenticated session with the browser and save information about the user. In the next section, you'll see how we can retrieve and use that information.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+386
+
+CHAPTER 11 Security: Authentication and SPA
+
+Figure 11.4 The Keycloak login page for the Polar Bookshop realm, shown after Edge Service triggered the OIDC authentication flow
+
+11.4.4 Inspecting the authenticated user context
+As part of the authentication process, Spring Security defines a context to hold information about the user and map a user session to an ID Token. In this section, you'll learn more about this context, what classes are involved, and how to retrieve the data and expose it through a new /user endpoint in Edge Service.
+First, let's define a User model to collect the username, first name, last name, and roles of an authenticated user. That's the same information we provided when registering the two users in Keycloak, and it is the information returned in the ID Token. In a new com.polarbookshop.edgeservice.user package, create a User record as follows.
+
+Listing 11.8 Creating the User record to hold info about an authenticated user
+package com.polarbookshop.edgeservice.user;
+
+import java.util.List;
+
+public record User( String username, String firstName, String lastName, List<String> roles
+){}
+
+Immutable data class holding user data
+
+Independent of the authentication strategy adopted (whether username/password, OpenID Connect/OAuth2, or SAML2), Spring Security keeps the information about
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+387
+
+an authenticated user (also called the principal) in an Authentication object. In the case of OIDC, the principal object is of type OidcUser, and it's where Spring Security stores the ID Token. In turn, Authentication is saved in a SecurityContext object.
+One way to access the Authentication object for the currently logged-in user is extracting it from the related SecurityContext retrieved from the ReactiveSecurityContextHolder (or SecurityContextHolder for imperative applications). Figure 11.5 illustrates how all these objects are related to each other.
+
+Security context structure for OIDC authentication in Spring Security
+
+ReactiveSecurityContextHolder
+
+Gives access to
+Contains SecurityContext
+
+Authentication
+
+Contains
+
+OidcUser (Principal)
+
+Contains
+
+OidcIdT oken (ID Token)
+
+Figure 11.5 The main classes used to store information about the currently authenticated user
+
+You can make that work by doing the following:
+
+1 Create a UserController class annotated with @RestController in the com.polarbookshop.edgeservice.user package.
+2 Define a method to handle GET requests to a new /user endpoint. 3 Return a User object for the currently authenticated user, retrieving the neces-
+sary information from OidcUser. To get the correct data, we can use the call hierarchy shown in figure 11.5.
+
+The resulting method in the UserController class will look like this:
+
+@GetMapping("user")
+
+Gets SecurityContext for the currently authenticated user from
+ReactiveSecurityContextHolder
+
+public Mono<User> getUser() { return ReactiveSecurityContextHolder.getContext() .map(SecurityContext::getAuthentication)
+
+Gets Authentication from SecurityContext
+
+.map(authentication ->
+
+(OidcUser) authentication.getPrincipal()) .map(oidcUser ->
+new User( oidcUser.getPreferredUsername(),
+
+Gets the principal from Authentication. For OIDC, it's of type OidcUser.
+
+oidcUser.getGivenName(), oidcUser.getFamilyName(), List.of("employee", "customer") )
+
+Builds a User object using data from OidcUser (extracted from the ID Token)
+
+);
+
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+388
+
+CHAPTER 11 Security: Authentication and SPA
+
+In the next chapter, which focuses on authorization strategies, we'll configure Keycloak to include a custom roles claim in the ID Token and use that value to build the User object in the UserController class. Until then, we'll use a fixed list of values.
+For Spring Web MVC and WebFlux controllers, besides using ReactiveSecurityContextHolder directly, we can use the annotations @CurrentSecurityContext and @AuthenticationPrincipal to inject the SecurityContext and the principal (in this case, OidcUser) respectively.
+Let's simplify the implementation of the getUser() method by injecting the OidcUser object directly as an argument. The final result for the UserController class is shown in the following listing.
+
+Listing 11.9 Returning information about the currently authenticated user
+
+package com.polarbookshop.edgeservice.user;
+
+import java.util.List; import reactor.core.publisher.Mono; import org.springframework.security.core.annotation.
+AuthenticationPrincipal;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser; import org.springframework.web.bind.annotation.GetMapping; import org.springframework.web.bind.annotation.RestController;
+
+@RestController public class UserController {
+
+@GetMapping("user") public Mono<User> getUser(
+@AuthenticationPrincipal OidcUser oidcUser
+
+Injects an OidcUser object containing info about the currently authenticated user
+
+){
+
+var user = new User( oidcUser.getPreferredUsername(), oidcUser.getGivenName(), oidcUser.getFamilyName(),
+
+Builds a User object from relevant claims contained in OidcUser
+
+List.of("employee", "customer")
+
+);
+
+return Mono.just(user); } }
+
+Wraps the User object in a reactive publisher, since Edge Service is a reactive application
+
+Ensure that Keycloak and Redis are still running from the previous section, run the Edge Service application (./gradlew bootRun), open an incognito browser window, and navigate to http://localhost:9000/user. Spring Security will redirect you to Keycloak, which will prompt you to log in with a username and password. For example, authenticate as Bjorn (bjorn/password). After successfully authenticating, you will be redirected back to the /user endpoint. The result is the following:
+
+{ "username": "bjorn", "firstName": "Bjorn", "lastName": "Vinterberg",
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+389
+
+"roles": [ "employee", "customer"
+] }
+
+NOTE The roles list includes hardcoded values. In the next chapter, we'll change it to return the actual roles assigned to each user in Keycloak.
+When you're done trying out the new endpoint, stop the application with Ctrl-C and the containers with docker-compose down.
+Consider what happened when you tried to access the /user endpoint and got redirected to Keycloak. After successfully validating the user's credentials, Keycloak called Edge Service back and sent the ID Token for the newly authenticated user. Then Edge Service stored the token and redirected the browser to the required endpoint, together with a session cookie. From that point on, any communication between the browser and Edge Service will use that session cookie to identify the authenticated context for that user. No token is exposed to the browser.
+The ID Token is stored in OidcUser, part of Authentication and ultimately included in SecurityContext. In chapter 9, we used the Spring Session project to make Edge Service store session data in an external data service (Redis), so it could remain stateless and be able to scale out. SecurityContext objects are included in the session data and are therefore stored in Redis automatically, making it possible for Edge Service to scale out without any problem.
+Another option for retrieving the currently authenticated user (the principal) is from the context associated with a specific HTTP request (called the exchange). We'll use that option to update the rate limiter configuration. In chapter 9, we implemented rate-limiting with Spring Cloud Gateway and Redis. Currently the rate-limiting is computed based on the total number of requests received every second. We should update it to apply the rate limits to each user independently.
+Open the RateLimiterConfig class and configure how the username of the currently authenticated principal should be extracted from the request. If no user is defined (that is, the request is unauthenticated, anonymous), we use a default key to apply rate-limiting to all unauthenticated requests as a whole.
+
+Listing 11.10 Configuring rate limiting for each user
+
+@Configuration public class RateLimiterConfig {
+@Bean
+
+Gets the currently authenticated user (the principal) from the current request (the exchange)
+
+KeyResolver keyResolver() {
+
+return exchange -> exchange.getPrincipal()
+
+.map(Principal::getName)
+
+Extracts the username from the principal
+
+.defaultIfEmpty("anonymous"); } }
+
+If the request is unauthenticated, it uses "anonymous" as the default key to apply rate-limiting.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+390
+
+CHAPTER 11 Security: Authentication and SPA
+
+That concludes the basic configuration for authenticating users of Polar Bookshop using OpenID Connect. The following section will cover how logout works in Spring Security and how we can customize it for the OAuth2/OIDC scenario.
+11.4.5 Configuring user logout in Spring Security and Keycloak
+So far, we have addressed the challenges and solutions for authenticating users in a distributed system. Still, we should consider what happens when a user logs out.
+In Spring Security, logging out results in all the session data associated with the user being deleted. When OpenID Connect/OAuth2 is used, the tokens stored by Spring Security for that user are also deleted. However, the user will still have an active session in Keycloak. Just as the authentication process involves both Keycloak and Edge Service, completely logging a user out requires propagating the logout request to both components.
+By default, a logout performed against an application protected by Spring Security will not affect Keycloak. Fortunately, Spring Security provides an implementation of the "OpenID Connect RP-Initiated Logout" specification, which defines how a logout request should be propagated from an OAuth2 Client (the Relying Party) to the Authorization Server. You'll see how to configure it for Edge Service soon.
+NOTE The OpenID Connect specification includes a few different scenarios for session management and logout. If you'd like to learn more, I recommend you check the official documents for OIDC Session Management (https://openid.net/specs/openid-connect-session-1_0.html), OIDC FrontChannel Logout (https://openid.net/specs/openid-connect-frontchannel1_0.html), OIDC Back-Channel Logout (https://openid.net/specs/openid -connect-backchannel-1_0.html), and OIDC RP-Initiated Logout (https:// openid.net/specs/openid-connect-rpinitiated-1_0.html).
+Spring Security supports logging out by sending a POST request to the /logout endpoint implemented and exposed by the framework by default. We want to enable the RP-Initiated Logout scenario so that when a user logs out of the application, they are also logged out of the Authorization Server. Spring Security has full support for this scenario and provides an OidcClientInitiatedServerLogoutSuccessHandler object you can use to configure how to propagate a logout request to Keycloak.
+Let's say the RP-Initiated Logout feature is enabled. In that case, after a user has been successfully logged out of Spring Security, Edge Service will send a logout request to Keycloak through the browser (using a redirect). Next you'll probably want the user to be redirected back to the application after the logout operation has been performed on the Authorization Server as well.
+You can configure where the user should be redirected after a logout with the setPostLogoutRedirectUri() method, which is exposed by the OidcClientInitiatedServerLogoutSuccessHandler class. You might specify a direct URL, but that will not work well in a cloud environment due to many variables such as hostnames, service
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.4 Authenticating users with Spring Security and OpenID Connect
+
+391
+
+names, and protocols (http vs. https). The Spring Security team knew that, and they added support for placeholders that are resolved dynamically at runtime. Instead of hardcoding a URL value, you can use the {baseUrl} placeholder. When you run Edge Service locally, the placeholder will be resolved to http://localhost:9000. If you ran it in the cloud behind a proxy with TLS termination and accessible through the DNS name polarbookshop.com, it would automatically be replaced with https://polarbookshop.com.
+However, the Client configuration in Keycloak requires an exact URL. That's why we added http://localhost:9000 to the list of valid redirect URLs when we registered Edge Service in Keycloak. In production you'll have to update the list of valid redirect URLs in Keycloak to match the actual URLs used there.
+Figure 11.6 illustrates the logout scenario I've just described.
+
+Logout flow with OIDC
+
+Browser
+
+Edge Service
+
+Please, log me out.
+
+Log the user out. POST /logout
+Done. Now log out of Keycloak as well.
+302 Redirect to Keycloak
+
+Delete the session data.
+
+Log the user out.
+
+Done. Now go back to the application. 302 Redirect to Edge Service
+Show the homepage. GET /
+Here's the homepage. 200 OK
+
+Keycloak
+Invalidate tokens and delete the session data.
+
+Figure 11.6 When a user logs out, the request is processed by Spring Security first, then forwarded to Keycloak, and the user is finally redirected to the application.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+392
+
+CHAPTER 11 Security: Authentication and SPA
+
+Since the application's logout functionality is already provided by default in Spring Security, you only need to enable and configure the RP-Initiated Logout for Edge Service:
+1 In the SecurityConfig class, define an oidcLogoutSuccessHandler() method to build an OidcClientInitiatedServerLogoutSuccessHandler object.
+2 Configure the post-logout redirect URL using the setPostLogoutRedirectUri() method.
+3 Call the oidcLogoutSuccessHandler() method from the logout() configuration defined in the SecurityWebFilterChain bean.
+The resulting configuration in the SecurityConfig class is as follows.
+
+Listing 11.11 Configuring RP-Initiated Logout and redirecting on logout
+package com.polarbookshop.edgeservice.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.reactive.
+ EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.oauth2.client.oidc.web.server.logout.
+ OidcClientInitiatedServerLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.registration.
+ ReactiveClientRegistrationRepository;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.authentication.logout.
+ ServerLogoutSuccessHandler;
+
+@EnableWebFluxSecurity public class SecurityConfig {
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http .authorizeExchange(exchange -> exchange.anyExchange().authenticated()) .oauth2Login(Customizer.withDefaults()) .logout(logout -> logout.logoutSuccessHandler(
+
+Defines a custom handler for the scenario where a logout operation is completed successfully
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build();
+
+}
+
+private ServerLogoutSuccessHandler oidcLogoutSuccessHandler( ReactiveClientRegistrationRepository clientRegistrationRepository
+){ var oidcLogoutSuccessHandler = new OidcClientInitiatedServerLogoutSuccessHandler( clientRegistrationRepository);
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+393
+
+oidcLogoutSuccessHandler
+
+.setPostLogoutRedirectUri("{baseUrl}");
+
+return oidcLogoutSuccessHandler;
+
+}
+
+After logging out from the OIDC Provider, Keycloak will
+
+}
+
+redirect the user to the application base URL computed
+
+dynamically from Spring (locally, it's http://localhost:9000).
+
+NOTE The ReactiveClientRegistrationRepository bean is automatically configured by Spring Boot for storing the information about the clients registered with Keycloak, and it's used by Spring Security for authentication/ authorization purposes. In our example, there's only a client: the one we configured earlier in the application.yml file.
+I won't ask you to test the logout functionality just yet. The reason will be apparent after we introduce the Angular frontend to the Polar Bookshop system.
+The user authentication feature based on OpenID Connect/OAuth2 is now complete, including logout and scalability concerns. If Edge Service used a template engine like Thymeleaf to build the frontend, the work we've done so far would be enough. However, when you're integrating a secured backend application with an SPA like Angular, there are a few more aspects to consider. That will be the focus of the next section.
+
+11.5
+
+Integrating Spring Security with SPAs
+The web frontend part of microservice architectures and other distributed systems is often built as one or more single-page applications using frameworks like Angular, React, or Vue. Analyzing how SPAs are created is not in the scope of this book, but it's essential to look at what changes are needed to support such frontend clients.
+So far, you have interacted with the services composing the Polar Bookshop system through a Terminal window. In this section, we'll add an Angular application that will be the frontend of the system. It will be served by an NGINX container and be accessible via the gateway provided by Edge Service. Supporting an SPA will require some additional configuration in Spring Security to address concerns like Cross-Origin Request Sharing (CORS) and Cross-Site Request Forgery (CSRF). This section shows how to do that.
+
+11.5.1 Running an Angular application
+The Polar Bookshop system will have an Angular application as the frontend. Since this book doesn't cover frontend technologies and patterns, I have prepared one already. We just need to decide how to include it in the Polar Bookshop system.
+One option is to let Edge Service serve the SPA static resources. Spring Boot applications serving a frontend usually host the source code in src/main/resources. That's a convenient strategy when using template engines like Thymeleaf, but for SPAs like Angular, I prefer keeping the code in a separate module. SPAs have their own development, build, and release tools, so having a dedicated folder is cleaner and more
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+394
+
+CHAPTER 11 Security: Authentication and SPA
+
+maintainable. Then you can configure Spring Boot to process the SPA's static resources at build time and include them in the final release.
+Another option is to have a dedicated service take care of serving the Angular static resources. That's the strategy we'll use for Polar Bookshop. I have already packaged the Angular application in an NGINX container. NGINX (https://nginx.org) provides HTTP server features, and it's very convenient for serving static resources such as the HTML, CSS, and JavaScript files composing the Angular application.
+Let's go ahead and run the Polar Bookshop frontend (polar-ui) in Docker. First, go to your polar-deployment repository, and open your Docker Compose file (docker/docker-compose.yml). Then add the configuration to run polar-ui and expose it through port 9004.
+
+Listing 11.12 Running the Angular application as a container
+
+version: "3.8" services:
+...
+
+polar-ui:
+
+image: "ghcr.io/polarbookshop/polar-ui:v1"
+
+container_name: "polar-ui" ports:
+- 9004:9004
+
+NGINX will serve the SPA on port 9004.
+
+environment: - PORT=9004
+
+Configures the NGINX server port
+
+The container image I built to package the Angular application
+
+Like the other applications in the Polar Bookshop system, we don't want the Angular application to be accessible directly from the outside. Instead, we want to make it accessible via the gateway provided by Edge Service. We can do that by adding a new route for Spring Cloud Gateway to forward any requests for static resources to the Polar UI application.
+Go to your Edge Service project (edge-service), open the application.yml file, and configure the new route as follows.
+
+Listing 11.13 Configuring a new gateway route for the SPA static resources
+
+spring:
+
+gateway: routes:
+
+The route ID
+
+- id: spa-route
+
+uri: ${SPA_URL:http://localhost:9004}
+
+predicates:
+
+- Path=/,/*.css,/*.js,/favicon.ico
+
+The URI value comes from an environment variable, or else the specified default.
+The predicate is a list of paths matching the root endpoint and the SPA static resources.
+
+The URI for the Polar UI application is computed using the value from an environment variable (SPA_URL). If it's not defined, the default value written after the first colon (:) symbol will be used.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+395
+
+NOTE When running Edge Service as a container, remember to configure the SPA_URL environment variable. On Docker you can use the container name and port as the value, resulting in http://polar-ui:9004.
+Let's test it out. First, run the Polar UI container together with Redis and Keycloak. Open a Terminal window, navigate to the folder where you keep your Docker Compose file (polar-deployment/docker/docker-compose.yml), and run the following command:
+$ docker-compose up -d polar-ui polar-redis polar-keycloak
+Then build the Edge Service project again, and run the application (./gradlew bootRun). Finally, open an incognito browser window and navigate to http://localhost:9000.
+Spring Security is configured to protect all endpoints and resources, so you'll automatically be redirected to the Keycloak login page. After you authenticate as either Isabelle or Bjorn, you'll be redirected back to the Edge Service root endpoint from which the Angular frontend is served.
+For now, there's not much you can do. The authentication flow is triggered by Spring Security when it receives an unauthenticated request, but it won't work if it's an AJAX request due to CORS issues. Furthermore, POST requests (including the logout operation) will fail due to the CSRF protection enabled by Spring Security. In the following sections, I'll show you how to update the Spring Security configuration to overcome those issues.
+Before moving on, stop the application with Ctrl-C (but keep the containers running--you'll need them).
+11.5.2 Controlling the authentication flow
+In the previous section, you tried accessing the Edge Service homepage and experienced being automatically redirected to Keycloak to provide a username and password. When the frontend consists of server-rendered pages (such as when using Thymeleaf), that behavior works fine, and it's convenient since it doesn't require any extra configuration. If you're not authenticated yet, or your session has expired, Spring Security will automatically trigger the authentication flow and redirect your browser to Keycloak.
+With a single-page application, things work a bit differently. The Angular application is returned by the backend when accessing the root endpoint through a standard HTTP GET request performed by the browser. After that first step, the SPA interacts with the backend through AJAX requests. When the SPA sends an unauthenticated AJAX request to a protected endpoint, you don't want Spring Security to reply with an HTTP 302 response redirecting to Keycloak. Instead, you want it to return a response with an error status like HTTP 401 Unauthorized.
+The main reason for not using redirects with SPAs is that you would run into CrossOrigin Request Sharing (CORS) issues. Consider the scenario where an SPA is served from https://client.polarbookshop.com and makes HTTP calls through AJAX to a
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+396
+
+CHAPTER 11 Security: Authentication and SPA
+
+backend at https://server.polarbookshop.com. The communication is blocked because the two URLs don't have the same origin (the same protocol, domain, and port). That's the standard same-origin policy enforced by all web browsers.
+CORS is a mechanism for allowing a server to accept HTTP calls through AJAX from a browser-based client like an SPA, even if the two have different origins. In Polar Bookshop, we serve the Angular frontend via the gateway implemented in Edge Service (same origin). Therefore, there aren't any CORS issues between these two components. However, suppose Spring Security is configured to reply to an unauthenticated AJAX call with a redirect to Keycloak (having a different origin). In that case, the request will be blocked because redirects to different origins are not permitted during AJAX requests.
+NOTE To learn more about CORS in Spring Security, you can check out chapter 10 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where the subject is explained in great detail. For a comprehensive explanation of CORS, see CORS in Action by Monsur Hossain (Manning, 2014).
+When changing the Spring Security configuration to reply with an HTTP 401 response to unauthenticated requests, it's up to the SPA to handle the error and call the backend to initiate the authentication flow. Redirects are only a problem during AJAX requests. The crucial part here is that the call to the backend to start the user authentication is not an AJAX request sent by Angular. Instead, it's a standard HTTP call sent from the browser, like the following:
+login(): void { window.open('/oauth2/authorization/keycloak', '_self');
+}
+I'd like to stress that the login call is not an AJAX request sent from the Angular HttpClient. Instead, it instructs the browser to call the login URL. Spring Security exposes an /oauth2/authorization/{registrationId} endpoint that you can use to start the authentication flow based on OAuth2/OIDC. Since the client registration identifier for Edge Service is keycloak, the login endpoint will be /oauth2/authorization/ keycloak.
+To make that possible, we need to define a custom AuthenticationEntryPoint to instruct Spring Security to reply with an HTTP 401 status when an unauthenticated request is received for a protected resource. The framework already provides an HttpStatusServerEntryPoint implementation that perfectly suits this scenario, since it lets you specify which HTTP status to return when a user is required to authenticate.
+Listing 11.14 Returning 401 when the user is not authenticated
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+397
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){
+
+return http
+
+.authorizeExchange(exchange -> exchange.anyExchange().authenticated())
+
+.exceptionHandling(exceptionHandling ->
+
+exceptionHandling.authenticationEntryPoint(
+
+new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)))
+
+.oauth2Login(Customizer.withDefaults())
+
+.logout(logout -> logout.logoutSuccessHandler(
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build(); } }
+
+When an exception is thrown because a user is not authenticated, it replies with an HTTP 401 response.
+
+At this point, the Angular application can explicitly intercept HTTP 401 responses and trigger the authentication flow. However, since the SPA is now in charge of starting the flow, we need to permit unauthenticated access to its static resources. We would also like to retrieve the books in the catalog without being authenticated, so let's permit GET requests to the /books/** endpoints as well. Go ahead and update the SecurityWebFilterChain bean in the SecurityConfig class as follows.
+
+Listing 11.15 Allowing unauthenticated GET requests to SPA and books
+
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http .authorizeExchange(exchange -> exchange
+
+Allows unauthenticated access to the SPA static resources
+
+Any other request
+requires user authentication.
+
+.pathMatchers("/", "/*.css", "/*.js", "/favicon.ico")
+
+.permitAll()
+
+.pathMatchers(HttpMethod.GET, "/books/**")
+
+.permitAll() .anyExchange().authenticated() )
+
+Allows unauthenticated read access to the books in the catalog
+
+.exceptionHandling(exceptionHandling -> exceptionHandling
+
+.authenticationEntryPoint(
+
+new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)))
+
+.oauth2Login(Customizer.withDefaults())
+
+.logout(logout -> logout.logoutSuccessHandler(
+
+oidcLogoutSuccessHandler(clientRegistrationRepository)))
+
+.build();
+
+}
+
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+398
+
+CHAPTER 11 Security: Authentication and SPA
+
+Let's test how Edge Service works now. Ensure that the Polar UI, Redis, and Keycloak containers are still running. Next, build and run the Edge Service application (./gradlew bootRun), and then go to http://localhost:9000 from an incognito browser window. The first thing to notice is that you don't get redirected to the login page but are presented with the Angular frontend application immediately. You can start the authentication flow by clicking the Login button in the upper-right menu.
+After logging in, the upper-right menu will contain a Logout button, which is only shown if the current user is successfully authenticated. Click the button to log out. It should trigger the logout flow, but it won't work due to CSRF issues. You'll learn how to fix that in the next section. In the meantime, stop the application with Ctrl-C.
+11.5.3 Protecting against Cross-Site Request Forgery
+The interaction between the frontend and backend is based on a session cookie. After the user is successfully authenticated with the OIDC/OAuth2 strategy, Spring will generate a session identifier to match the authenticated context and send it to the browser as a cookie. Any subsequent request to the backend will have to contain the session cookie, from which Spring Security can retrieve the tokens associated with the specific user and validate the request.
+However, session cookies are not enough to validate requests, which are vulnerable to Cross-Site Request Forgery (CSRF) attacks. CSRF affects modifying HTTP requests like POST, PUT, and DELETE. An attacker could induce users to perform requests they didn't intend by forging a request meant to cause harm. Forged requests could do things like transfer money from your bank account or compromise critical data.
+WARNING Many online tutorials and guides show how to disable the CSRF protection as the first thing when configuring Spring Security. That's dangerous to do without explaining the reasoning or considering the consequences. I recommend keeping the protection enabled unless there's a good reason not to (you'll see one good reason in chapter 12). As a general guideline, browser-facing applications like Edge Service should be protected against CSRF attacks.
+Fortunately, Spring Security has built-in protection against such attacks. The protection is based on a so-called CSRF token generated by the framework that's provided to the client at the beginning of the session and required to be sent along with any statechanging requests.
+NOTE To learn more about CSRF protection in Spring Security, you can check out chapter 10 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where the subject is explained in great detail.
+In the previous section, you tried to log out, but the request failed. Since the logout operation is available through a POST request to the /logout endpoint, the application expects to receive the CSRF token generated by Spring Security for that user session. By default, the generated CSRF token is sent to the browser as an HTTP header.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.5 Integrating Spring Security with SPAs
+
+399
+
+However, Angular applications cannot work with that and expect to receive the token value as a cookie. Spring Security supports this specific requirement, but it's not enabled by default.
+You can instruct Spring Security to provide CSRF tokens as cookies through the csrf() DSL exposed by ServerHttpSecurity and the CookieServerCsrfTokenRepository class. For imperative applications, that would be enough. However, for reactive applications like Edge Service, you need to take an extra step to ensure the CsrfToken value is actually provided.
+In chapter 8, you learned that reactive streams need to be subscribed to in order to activate them. At the moment, CookieServerCsrfTokenRepository doesn't ensure a subscription to CsrfToken, so you must explicitly provide a workaround in a WebFilter bean. This problem should be solved in future versions of Spring Security (see issue 5766 on GitHub: https://mng.bz/XW89). For now, update the SecurityConfig class as follows.
+
+Listing 11.16 Configuring CSRF to support a cookie-based strategy for SPAs
+
+@EnableWebFluxSecurity public class SecurityConfig {
+...
+
+@Bean
+
+SecurityWebFilterChain springSecurityFilterChain(
+
+ServerHttpSecurity http,
+
+ReactiveClientRegistrationRepository clientRegistrationRepository
+
+){ return http ... .csrf(csrf -> csrf.csrfTokenRepository(
+
+Uses a cookie-based strategy for exchanging CSRF tokens with the Angular frontend
+
+CookieServerCsrfTokenRepository.withHttpOnlyFalse()))
+
+.build();
+
+}
+@Bean WebFilter csrfWebFilter() {
+
+A filter with the only purpose of subscribing to the CsrfToken reactive stream and ensuring its value is extracted correctly
+
+return (exchange, chain) -> {
+
+exchange.getResponse().beforeCommit(() -> Mono.defer(() -> {
+
+Mono<CsrfToken> csrfToken =
+
+exchange.getAttribute(CsrfToken.class.getName());
+
+return csrfToken != null ? csrfToken.then() : Mono.empty();
+
+}));
+
+return chain.filter(exchange);
+
+};
+
+}
+
+}
+
+Let's verify that the logout flow works now. Ensure that the Polar UI, Redis, and Keycloak containers are still up and running. Next, build and run the application (./gradlew bootRun), and then go to http://localhost:9000 from an incognito browser
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+400
+
+CHAPTER 11 Security: Authentication and SPA
+
+window. Start the authentication flow by clicking the Login button from the upperright menu. Then click the Logout button. Under the hood, Spring Security will now accept your logout request (Angular adds the CSRF token value from the cookie as an HTTP header), terminate your web session, propagate the request to Keycloak, and finally redirect you to the homepage, unauthenticated.
+Thanks to this change, you can also perform any POST, PUT, and DELETE requests without receiving a CSRF error. Feel free to explore the Angular application. If you start up Catalog Service and Order Service, you can try adding new books to the catalog, modifying them, or placing an order.
+Both Isabelle and Bjorn can perform any action at the moment, which is not what we want, since customers (like Bjorn) shouldn't be allowed to manage the book catalog. The next chapter will cover authorization, and you'll see how to protect each endpoint with different access policies. Before addressing authorization, though, we need to write autotests to cover the new functionality. That's coming up in the next section.
+Before moving on, stop the application with Ctrl-C and all the containers with docker-compose down (from polar-deployment/docker).
+11.6 Testing Spring Security and OpenID Connect
+The importance of writing autotests is usually apparent to developers. Still, things can get challenging when it comes to security, and it sometimes ends up not being covered by automated tests because of its complexity. Fortunately, Spring Security provides several utilities to help you include security in your slice and integration tests in a simple way.
+In this section, you'll learn how to use the WebTestClient support for Spring Security to test OIDC authentication and CSRF protection. Let's get started.
+11.6.1 Testing OIDC authentication
+In chapter 8, we tested REST controllers exposed by Spring WebFlux by relying on the @SpringWebFlux annotation and WebTestClient. In this chapter, we added a new controller (UserController), so let's write some autotests for it with different security setups.
+First of all, open your Edge Service project, create a UserControllerTests class annotated with @WebFluxTest(UserController.class) in src/test/java, and autowire a WebTestClient bean. So far, the setup is similar to what we used in chapter 8: a slice test for the web layer. But we need some extra setup to cover security scenarios, as shown in the following listing.
+
+Listing 11.17 Defining a class to test the security policies for UserController
+
+@WebFluxTest(UserController.class) @Import(SecurityConfig.class) class UserControllerTests {
+
+Imports the application's security configuration
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.6 Testing Spring Security and OpenID Connect
+
+401
+
+@Autowired WebTestClient webClient;
+@MockBean
+
+A mock bean to skip the interaction with Keycloak when retrieving information about the Client registration
+
+ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+}
+
+Since we configured Edge Service to return an HTTP 401 response when a request is unauthenticated, let's verify that happens when calling the /user endpoint without authenticating first:
+
+@Test void whenNotAuthenticatedThen401() {
+webClient .get() .uri("/user") .exchange() .expectStatus().isUnauthorized();
+}
+
+To test the scenario where a user is authenticated, we can use mockOidcLogin(), a configuration object supplied by SecurityMockServerConfigurers to mock an OIDC login, synthesize an ID Token, and mutate the request context in WebTestClient accordingly.
+The /user endpoint reads claims from the ID Token through the OidcUser object, so we need to build an ID Token with username, first name, and last name (the roles are hardcoded in the controller for now). The following code shows how to do that:
+
+Expects a User object with the same information
+as the currently authenticated
+user
+
+@Test void whenAuthenticatedThenReturnUser() {
+var expectedUser = new User("jon.snow", "Jon", "Snow", List.of("employee", "customer"));
+
+The expected authenticated user
+
+webClient .mutateWith(configureMockOidcLogin(expectedUser)) .get() .uri("/user") .exchange() .expectStatus().is2xxSuccessful() .expectBody(User.class) .value(user -> assertThat(user).isEqualTo(expectedUser));
+}
+
+Defines an authentication context based on OIDC and uses the expected user
+
+private SecurityMockServerConfigurers.OidcLoginMutator
+ configureMockOidcLogin(User expectedUser) {
+
+return SecurityMockServerConfigurers.mockOidcLogin().idToken(
+
+builder -> { builder.claim(StandardClaimNames.PREFERRED_USERNAME, expectedUser.username());
+
+Builds a mock ID Token
+
+builder.claim(StandardClaimNames.GIVEN_NAME,
+
+expectedUser.firstName());
+
+builder.claim(StandardClaimNames.FAMILY_NAME,
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+402
+
+CHAPTER 11 Security: Authentication and SPA
+
+expectedUser.lastName()); }); }
+
+Finally, run the tests as follows:
+
+$ ./gradlew test --tests UserControllerTests
+
+The testing utilities supplied by Spring Security cover a wide array of scenarios and integrate well with WebTestClient. In the next section, you'll see how to test CSRF protection using a similar approach.
+
+11.6.2 Testing CSRF
+In Spring Security, CSRF protection applies to all mutating HTTP requests by default (such as POST, PUT, and DELETE). As you saw in previous sections, Edge Service accepts POST requests to the /logout endpoint to initiate the logout flow, and such requests require a valid CSRF token to be executed. Furthermore, we configured the RP-Initiated Logout feature from OIDC, so a POST request to /logout will actually result in an HTTP 302 response, redirecting the browser to Keycloak to also log the user out of there.
+Create a new SecurityConfigTests class and use the same strategy you learned in the previous section to set up a Spring WebFlux test with security support, as shown in the following listing.
+
+Listing 11.18 Defining a class for testing the authentication flow
+
+@WebFluxTest @Import(SecurityConfig.class) class SecurityConfigTests {
+
+Imports the application security configuration
+
+@Autowired WebTestClient webClient;
+@MockBean
+
+A mock bean to skip the interaction with Keycloak when retrieving information about the Client registration
+
+ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+}
+
+Then add a test case to check whether the application returns an HTTP 302 response after sending an HTTP POST request to the /logout with the correct OIDC login and CSRF context.
+
+@Test void whenLogoutAuthenticatedAndWithCsrfTokenThen302() {
+when(clientRegistrationRepository.findByRegistrationId("test")) .thenReturn(Mono.just(testClientRegistration()));
+
+webClient .mutateWith( SecurityMockServerConfigurers.mockOidcLogin())
+
+Uses a mock ID Token to authenticate the user
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+11.6 Testing Spring Security and OpenID Connect
+
+403
+
+.mutateWith(SecurityMockServerConfigurers.csrf())
+
+.post()
+
+.uri("/logout") .exchange() .expectStatus().isFound(); }
+
+The response is a redirect to Keycloak to propagate the logout operation.
+
+Enhances the request to provide the required CSRF token
+
+private ClientRegistration testClientRegistration() {
+
+return ClientRegistration.withRegistrationId("test")
+
+.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+
+.clientId("test") .authorizationUri("https://sso.polarbookshop.com/auth")
+
+A mock ClientRegistration
+
+.tokenUri("https://sso.polarbookshop.com/token")
+
+used by Spring Security
+
+.redirectUri("https://polarbookshop.com")
+
+to get the URLs to
+
+.build();
+
+contact Keycloak
+
+}
+
+Finally, run the tests as follows:
+
+$ ./gradlew test --tests SecurityConfigTests
+
+As always, you can find more test examples in the source code repository accompanying this book. When it comes to security, unit and integration tests are critical for ensuring the correctness of an application, but they are not enough. Those tests cover the default security configuration, which might be different in production. That's why we also need security-oriented autotests in the acceptance stage of the deployment pipeline (as explained in chapter 3), to test applications deployed in a production-like environment.
+
+Polar Labs
+Until now, the only application supposed to be accessed by users directly was Edge Service. All the other Spring Boot applications interact with each other from within the environment where they are deployed.
+Service-to-service interactions within the same Docker network or Kubernetes cluster can be configured using the container name or the Service name respectively. For example, Edge Service forwards requests to Polar UI via the http://polar-ui:9004 URL on Docker (<container-name>:<container-port>) and via the http://polar-ui URL on Kubernetes (Service name).
+Keycloak is different because it's involved in service-to-service interactions (for now, those are just interactions with Edge Service) and also interactions with end users via the web browser. In production, Keycloak will be accessible via a public URL that both applications and users will use, so there will be no problem. How about in local environments?
+Since we don't deal with public URLs when working locally, we need to configure things differently. On Docker, we can solve the problem by using the http://host .docker.internal special URL configured automatically when installing the software. It resolves to your localhost IP address and can be used both within a Docker network and outside.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+404
+
+CHAPTER 11 Security: Authentication and SPA
+
+(continued) On Kubernetes, we don't have a generic URL to let Pods within a cluster access your local host. That means Edge Service will interact with Keycloak via its Service name (http://polar-keycloak). When Spring Security redirects a user to Keycloak to log in, the browser will return an error because the http://polar-keycloak URL cannot be resolved outside the cluster. To make that possible, we can update the local DNS configuration to resolve the polar-keycloak hostname to the cluster IP address. Then a dedicated Ingress will make it possible to access Keycloak when requests are directed to the polar-keycloak hostname.
+If you're on Linux or macOS, you can map the polar-keycloak hostname to the minikube local IP address in the /etc/hosts file. On Linux, the IP address is the one returned by the minikube ip --profile polar command (as explained in chapter 9). On macOS, it's going to be 127.0.0.1. Open a Terminal window, and run the following command (make sure you replace the <ip-address> placeholder with the cluster IP address, depending on your operating system):
+$ echo "<ip-address> polar-keycloak" | sudo tee -a /etc/hosts
+On Windows you must map the polar-keycloak hostname to 127.0.0.1 in the hosts file. Open a PowerShell window as an administrator, and run the following command:
+$ Add-Content C:\Windows\System32\drivers\etc\hosts "127.0.0.1 polarkeycloak"
+I have updated the scripts for deploying all the backing services for Polar Bookshop, including Keycloak and Polar UI. You can get them from the /Chapter11/11-end/polardeployment/kubernetes/platform/development folder in the code repository accompanying the book (https://github.com/ThomasVitale/cloud-native-spring-in-action) and copy them into the same path in your polar-deployment repository. The deployment also includes the configuration of a dedicated Ingress for Keycloak, accepting requests directed to the polar-keycloak hostname.
+At this point you can run the ./create-cluster.sh script (polar-deployment/ kubernetes/platform/development) to start a minikube cluster and deploy all the backing services for Polar Bookshop. If you're on Linux, you'll be able to access Keycloak directly. If you're on macOS or Windows, remember to run the minikube tunnel --profile polar command first. Either way, you can open a browser window and access Keycloak at polar-keycloak/ (include the final slash).
+Finally, try running the entire system on Kubernetes after updating the deployment scripts for Edge Service to configure the URLs for Polar UI and Keycloak. You can refer to the Chapter11/11-end folder in the code repository accompanying the book to check the final result (https://github.com/ThomasVitale/cloud-native-spring-in-action).
+The next chapter will expand on the subject of security. It will cover how to propagate the authentication context from Edge Service to the downstream applications, and how to configure authorization.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+405
+
+Summary
+ Access control systems require identification (who are you?), authentication (can you prove it's really you?), and authorization (what are you allowed to do?).
+ A common strategy for implementing authentication and authorization in cloud native applications is based on JWT as the data format, OAuth2 as the authorization framework, and OpenID Connect as the authentication protocol.
+ When using OIDC authentication, a Client application initiates the flow and delegates an Authorization Server for the actual authentication. Then the Authorization Server issues an ID Token to the Client.
+ The ID Token includes information about the user authentication.  Keycloak is an identity and access management solution that supports OAuth2
+and OpenID Connect and can be used as an Authorization Server.  Spring Security provides native support for OAuth2 and OpenID Connect, and
+you can use it to turn Spring Boot applications into OAuth2 Clients.  In Spring Security, you can configure both authentication and authorization in
+a SecurityWebFilterChain bean. To enable the OIDC authentication flow, you can use the oauth2Login() DSL.  By default, Spring Security exposes a /logout endpoint for logging a user out.  In an OIDC/OAuth2 context, we also need to propagate the logout request to the Authorization Server (such as Keycloak) to log the user out of there. We can do that via the RP-Initiated Logout flow supported by Spring Security via the OidcClientInitiatedServerLogoutSuccessHandler class.  When a secure Spring Boot application is the backend for an SPA, we need to configure CSRF protection through cookies and implement an authentication entry point that returns an HTTP 401 response when a request is not authenticated (as opposed to the default HTTP 302 response redirecting to the Authorization Server automatically).  The Spring Security Test dependency supplies several convenient utilities for testing security.  The WebTestClient bean can be enhanced by mutating its request context through a particular configuration for OIDC login and CSRF protection.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Security: Authorization and auditing
+This chapter covers
+ Authorization and roles with Spring Cloud Gateway and OAuth2
+ Protecting APIs with Spring Security and OAuth2 (imperative)
+ Protecting APIs with Spring Security and OAuth2 (reactive)
+ Protecting and auditing data with Spring Security and Spring Data
+In the previous chapter, I introduced access control systems for cloud native applications. You saw how to add authentication to Edge Service with Spring Security and OpenID Connect, manage the user session life cycle, and address CORS and CSRF concerns when integrating an Angular frontend with Spring Boot.
+By delegating the authentication step to Keycloak, Edge Service is not affected by the specific authentication strategy. For example, we used the login form feature offered by Keycloak, but we could also enable social login via GitHub or rely on an existing Active Directory to authenticate users. Edge Service only needs to support OIDC to verify that the authentication happened correctly and get information about the user via an ID Token.
+406
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+407
+
+There are still a few issues we haven't addressed. Polar Bookshop is a distributed system, and after a user authenticates successfully with Keycloak, Edge Service is supposed to interact with Catalog Service and Order Service on behalf of the user. How can we securely propagate the authentication context to the other system applications? This chapter will help you solve that problem using OAuth2 and Access Tokens.
+After dealing with authentication, we will address the authorization step. Right now, both customers and employees of Polar Bookshop can perform any action on the system. This chapter will walk you through a few authorization scenarios handled with OAuth2, Spring Security, and Spring Data:
+ We'll use a role-based access control (RBAC) strategy to protect the REST endpoints exposed by Spring Boot, depending on whether the user is a customer or an employee of the bookshop.
+ We'll configure data auditing to keep track of which user made what changes.  We'll enforce protection rules for data so that only its owner can access it.
+Finally, you'll explore how you can test those changes using Spring Boot, Spring Security, and Testcontainers.
+NOTE The source code for the examples in this chapter is available in the Chapter12/12-begin and Chapter12/12-end folders, containing the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+In the previous chapter, we added user authentication features to Polar Bookshop. Edge Service is the access point to the system, so it's an excellent candidate for addressing cross-cutting concerns like security. For that reason, we made it responsible for authenticating users. Edge Service initiates the authentication flow but delegates the actual authentication step to Keycloak using the OpenID Connect protocol.
+Once a user authenticates successfully with Keycloak, Edge Service receives an ID Token from Keycloak with information about the authentication event and initiates an authenticated session with the user's browser. At the same time, Keycloak also issues an Access Token, which is used to grant Edge Service access to downstream applications on behalf of the user as per OAuth2.
+OAuth2 is an authorization framework that enables an application (called a Client) to obtain limited access to a protected resource provided by another application (called a Resource Server) on behalf of a user. When a user authenticates with Edge Service and asks to access their book orders, OAuth2 provides a solution for Edge Service to retrieve orders from Order Service on behalf of that user. This solution relies on a trusted party (called an Authorization Server), which issues an Access Token to Edge Service and grants access to the user's book orders from Order Service.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+408
+
+CHAPTER 12 Security: Authorization and auditing
+
+You might recognize some of these roles from the OIDC authentication flow we adopted in the previous chapter. As anticipated, OIDC is an identity layer built on top of OAuth2 and relies on the same basic concepts:
+ Authorization Server--The entity responsible for authenticating users and issuing, refreshing, and revoking Access Tokens. In Polar Bookshop, this is Keycloak.
+ User--Also called the Resource Owner, this is the human logging in with the Authorization Server to get authenticated access to the Client application. It's also the human or service granting a Client access to the protected resources provided by a Resource Server. In Polar Bookshop, it's either a customer or an employee.
+ Client--The application requiring the user to be authenticated and asking the user for authorization to access protected resources on their behalf. It can be a mobile application, a browser-based application, a server-side application, or even a smart TV application. In Polar Bookshop, it's Edge Service.
+ Resource Server--This is the application hosting the protected resources a Client wants to access on the user's behalf. In Polar Bookshop, Catalog Service and Order Service are Resource Servers. Dispatcher Service is decoupled from the other applications and won't be accessed on behalf of the user. As a result, it won't participate in the OAuth2 setup.
+Figure 12.1 shows how the four actors are mapped into the Polar Bookshop architecture. Edge Service can access downstream applications on behalf of the user through an
+Access Token issued by Keycloak during the OIDC authentication phase. In this section, you'll see how to configure Spring Cloud Gateway in Edge Service to use the Access Token whenever a request is routed to Catalog Service and Order Service.
+In the previous chapter, we defined two users: Isabelle has both the employee and customer roles, while Bjorn has just the customer role. In this section, you'll also learn how to include that information in both ID Tokens and Access Tokens so Spring Security can read it and set up a role-based access control (RBAC) mechanism.
+NOTE In Polar Bookshop, the OAuth2 Client (Edge Service) and the OAuth2 Resource Servers (Catalog Service and Order Service) belong to the same system, but the same framework can be used when the OAuth2 Client is a thirdparty application. In fact, that was the original use case for OAuth2 and why it became so popular. Using OAuth2, services like GitHub or Twitter let you give third-party applications limited access to your account. For example, you could authorize a scheduling application to publish tweets on your behalf without exposing your Twitter credentials.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+409
+
+Polar UI [Container: NGINX]
+Provides an SPA to users
+
+Catalog Service [Container: Spring Boot]
+
+User [Person]
+A customer or an employee of the bookshop
+OAuth2 user
+
+Uses Uses
+
+Delivers to the user's web browser
+
+Provides functionality for managing books
+
+Edge Service [Container: Spring Boot]
+
+Forwards requests to [REST/HTTP] OAuth2 Resource Server
+
+Provides API gateway and cross-cutting concerns
+OAuth2 Client
+
+Forwards requests to [REST/HTTP]
+
+Delegates authentication and token management to
+
+Checks book details [REST/HTTP]
+Order Service [Container: Spring Boot]
+Provides functionality for purchasing books
+
+Keycloak [Container: Quarkus]
+
+OAuth2 Resource Server
+
+Provides identity and access management
+OAuth2 Authorization Server
+
+Polar Bookshop [Software System]
+
+Figure 12.1 How the OIDC/OAuth2 roles are assigned to the entities in the Polar Bookshop architecture
+
+12.1.1 Token relay from Spring Cloud Gateway to other services
+After a user successfully authenticates with Keycloak, Edge Service (the OAuth2 Client) receives an ID Token and an Access Token:
+ ID Token--This represents a successful authentication event and includes information about the authenticated user.
+ Access Token--This represents the authorization given to the OAuth2 Client to access protected data provided by an OAuth2 Resource Server on the user's behalf.
+In Edge Service, Spring Security uses the ID Token to extract information about the authenticated user, set up a context for the current user session, and make the data available through the OidcUser object. That's what you saw in the previous chapter.
+The Access Token grants Edge Service authorized access to Catalog Service and Order Service (the OAuth2 Resource Servers) on behalf of the user. After we secure both applications, Edge Service will have to include the Access Token in all requests
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+410
+
+CHAPTER 12 Security: Authorization and auditing
+
+routed to them as an Authorization HTTP header. Unlike ID Tokens, Edge Service doesn't read the Access Token's content because it's not the intended audience. It stores the Access Token received from Keycloak and then includes it as-is in any request to a protected endpoint downstream.
+This pattern is called token relay, and it's supported by Spring Cloud Gateway as a built-in filter, so you don't need to implement anything yourself. When the filter is enabled, the Access Token is included automatically in all requests sent to one of the downstream applications. Figure 12.2 illustrates how the token relay pattern works.
+
+Token relay: accessing OAuth2 resource servers on behalf of the user (Prerequisite: the user is already authenticated)
+
+Browser
+
+Edge Service (OAuth2 Client)
+
+Order Service (OAuth2 Resource Server)
+
+Can I see my orders?
+
+Give me the orders for this user.
+GET /orders
+
+Give me the orders for this user. Here's the Access Token.
+GET /orders Authorization: Bearer <token>
+Here's the orders for the user. 200 OK
+
+Validate the token signature.
+
+Here's the orders for the user. 200 OK
+
+Figure 12.2 After a user is authenticated, Edge Service relays the Access Token to Order Service to call its protected endpoints on behalf of the user.
+
+Let's see how we can configure the Access Token relay in Edge Service.
+NOTE An Access Token has a validity period configured in Keycloak, and it should be as short as possible to reduce the exploitation time window in case the token gets leaked. An acceptable length is 5 minutes. When the token expires, the OAuth2 Client can ask the Authorization Server for a new one using a third type of token called a Refresh Token (which also has a validity period). The refresh mechanism is handled by Spring Security transparently, and I won't describe it further.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+411
+
+ADOPTING THE TOKEN RELAY PATTERN IN SPRING CLOUD GATEWAY Spring Cloud Gateway implements the token relay pattern as a filter. In the Edge Service project (edge-service), open the application.yml file and add TokenRelay as a default filter, since we want it applied to all routes.
+
+Listing 12.1 Enabling the token relay pattern in Spring Cloud Gateway
+
+spring: cloud: gateway: default-filters: - SaveSession - TokenRelay
+
+Enables the propagation of the Access Token when calling a downstream service
+
+With the filter enabled, Spring Cloud Gateway takes care of propagating the right Access Token as an Authorization header in all outgoing requests to Catalog Service and Order Service. For example:
+GET /orders Authorization: Bearer <access_token>
+
+NOTE Unlike ID Tokens which are JWTs, the OAuth2 framework doesn't enforce a data format for Access Tokens. They can be of any String-based form. The most popular format is JWT, though, so that's how we'll parse Access Tokens on the consumer side (Catalog Service and Order Service).
+By default, Spring Security stores the Access Tokens for the currently authenticated users in memory. When you have multiple instances of Edge Service running (which is always true in a cloud production environment to ensure high availability), you will encounter issues due to the statefulness of the application. Cloud native applications should be stateless. Let's fix that.
+STORING ACCESS TOKENS IN REDIS
+Spring Security stores Access Tokens in an OAuth2AuthorizedClient object that is accessible through a ServerOAuth2AuthorizedClientRepository bean. The default implementation for that repository adopts an in-memory strategy for persistence. That's what makes Edge Service a stateful application. How can we keep it stateless and scalable?
+A simple way to do that is to store OAuth2AuthorizedClient objects in the web session rather than in memory so that Spring Session will pick them up automatically and save them in Redis, just like it does with ID Tokens. Fortunately, the framework already provides an implementation of the ServerOAuth2AuthorizedClientRepository interface to save data in the web session: WebSessionServerOAuth2AuthorizedClientRepository. Figure 12.3 illustrates how all the mentioned objects are related to each other.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+412
+
+CHAPTER 12 Security: Authorization and auditing
+
+How Spring Security stores Access Tokens in the web session
+
+ServerOAuth2AuthorizedClientRepository
+
+Gives access to
+
+OAuth2AuthorizedClient
+
+Implements
+
+Contains
+
+WebSessionServerOAuth2AuthorizedClientRepository
+
+OAuth2AccessT oken (Access Token)
+
+Figure 12.3 The main classes involved in storing an Access Token for the currently authenticated user in Spring Security
+
+In the Edge Service project, open the SecurityConfig class and define a bean of type ServerOAuth2AuthorizedClientRepository using the implementation that stores Access Tokens in the web session.
+
+Listing 12.2 Saving OAuth2AuthorizedClient objects in the web session
+
+@EnableWebFluxSecurity public class SecurityConfig {
+@Bean
+
+Defines a repository to store Access Tokens in the web session
+
+ServerOAuth2AuthorizedClientRepository authorizedClientRepository() {
+
+return new WebSessionServerOAuth2AuthorizedClientRepository();
+
+}
+
+... }
+
+WARNING Access Tokens defined as JWTs should be handled with care. They are bearer tokens, meaning that any application can use them in an HTTP request and get access to an OAuth2 Resource Server. Handling the OIDC/ OAuth2 flow in the backend rather than in an SPA provides better security because we don't expose any tokens to the browser. However, there might be other risks to manage, so carefully consider the trust boundaries of your system.
+In the next section you'll see how to enhance ID Tokens and Access Tokens to propagate information about user roles.
+12.1.2 Customizing tokens and propagating user roles
+Both ID Tokens and Access Tokens can include different information about the user, which is formatted as claims in the JWT. Claims are simple key/value pairs in JSON format. For example, OpenID Connect defines several standard claims to carry information about the user, like given_name, family_name, preferred_username, and email.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+413
+
+Access to such claims is controlled through scopes, a mechanism provided by OAuth2 to limit what data an OAuth2 Client can access. You can think of scopes as roles assigned to applications rather than to users. In the previous chapter, we used Spring Security to make Edge Service an OAuth2 Client and configured it with the openid scope. That scope grants Edge Service access to the authenticated user's identity (provided in the sub claim).
+Perhaps you have logged in to a third-party website using GitHub or Google (a social login based on OAuth2). If you did, you might have noticed that right after the authentication step, the service prompted you with a second request about what information from your GitHub or Google account you consented to allow the third party to access. That consent functionality is based on scopes, granting the third party (the OAuth2 Client) specific permissions depending on what scopes have been assigned.
+Regarding Edge Service, we can decide upfront what scopes it should be granted. This section will show you how to configure a roles claim with the list of roles assigned to the authenticated user. Then you'll use a roles scope to grant Edge Service access to that claim and instruct Keycloak to include it in both ID Tokens and Access Tokens.
+Before moving on, you'll need a Keycloak container up and running. Open a Terminal window, navigate to the folder where you keep your Docker Compose file, and run the following command:
+$ docker-compose up -d polar-keycloak
+If you haven't followed along, you can refer to Chapter12/12-begin/polar-deployment/ docker/docker-compose.yml in the accompanying repository.
+NOTE Later I'll provide you with a JSON file you can use to load the entire configuration when starting up the Keycloak container without being concerned with its persistence (as I did in the previous chapter). If you want to follow this second option directly, I still invite you to read through this section, since it provides the essential information you'll need when moving on to the Spring Security part of the chapter.
+CONFIGURING ACCESS TO USER ROLES IN KEYCLOAK Keycloak comes preconfigured with a roles scope you can use to give an application access to the user roles contained in a roles claim. However, the default representation of the roles list is not very convenient to use because it's defined as a nested object. Let's change that.
+Once Keycloak is up and running, open a browser window, head to http://localhost:8080, log in to the administration console with the same credentials defined in the Docker Compose file (user/password), and choose the PolarBookshop realm. Then select Client Scopes from the left menu. On the new page (figure 12.4), you'll find a list of all the preconfigured scopes in Keycloak, and you have the option to create
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+414
+
+CHAPTER 12 Security: Authorization and auditing
+
+Figure 12.4 Creating and managing client scopes
+new ones. In our case, we want to customize the existing roles scope, so click on it to open its settings.
+In the roles scope page, open the Mappers tab. That is where you can define the set of claims to which the given scope provides access (i.e., mappings). By default, Keycloak already has some mappers defined to map claims to the roles scope. We're interested in the realm roles mapper, which maps the user realm roles (including employee and customer) to a JWT claim. Select that mapper.
+The settings page for the realm roles mapper provides a few options for customization. We want to change two things:
+ The token claim name should be roles instead of realm_access.roles (so we will remove the nested object).
+ The roles claim should be included in both ID Token and Access Token, so we must ensure that both options are enabled. We need both because Edge Service reads the claims from the ID Token while Catalog Service and Order Service read the claims from the Access Token. Edge Service is not the intended audience for the Access Token, which is forwarded to downstream applications as-is.
+Figure 12.5 shows the final settings. When you're done, click Save.
+NOTE In the source code repository accompanying the book, I included a JSON file you can use to load the entire configuration when starting up the Keycloak container in the future, including the latest changes regarding roles (Chapter12/12-end/polar-deployment/docker/keycloak/full-realm-config.json). I recommend updating your polar-keycloak container definition in Docker Compose to use this new JSON file.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2
+
+415
+
+Figure 12.5 Configuring the mapper to include the user's realm roles in a roles JWT claim
+
+Before moving on to the next section, stop any running containers (docker-compose down).
+CONFIGURING ACCESS TO USER ROLES IN SPRING SECURITY Keycloak is now configured to return the authenticated user roles in a roles claim included in both the ID Token and Access Token. However, the roles claim will only be returned if the OAuth2 Client (Edge Service) asks for the roles scope.
+In the Edge Service project, open the application.yml file, and update the Client Registration configuration to include the roles scope.
+
+Listing 12.3 Assigning the roles scope to Edge Service
+
+spring:
+
+security:
+
+oauth2:
+
+client:
+
+registration: keycloak: client-id: edge-service client-secret: polar-keycloak-secret scope: openid,roles
+
+Adds "roles" to the list of scopes so that Edge Service can get access to the user roles
+
+provider:
+
+keycloak:
+
+issuer-uri: http://localhost:8080/realms/PolarBookshop
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+416
+
+CHAPTER 12 Security: Authorization and auditing
+
+Next you'll see how to extract the roles for the currently authenticated user from the ID Token.
+EXTRACTING USER ROLES FROM THE ID TOKEN In the previous chapter, we hardcoded the list of user roles in the UserController class of the Edge Service project because we didn't have them in the ID Token yet. Now that we do, let's refactor the implementation to fetch the roles for the currently authenticated user from the OidcUser class, which gives us access to the claims in the ID Token, including the brand-new roles claim.
+
+Listing 12.4 Extracting the user roles list from the ID Token via OidcUser
+@RestController public class UserController {
+
+@GetMapping("user")
+
+public Mono<User> getUser(@AuthenticationPrincipal OidcUser oidcUser) {
+
+var user = new User(
+
+oidcUser.getPreferredUsername(), oidcUser.getGivenName(), oidcUser.getFamilyName(), oidcUser.getClaimAsStringList("roles")
+
+Gets the "roles" claim and extracts it as a list of strings
+
+);
+
+return Mono.just(user);
+
+}
+
+}
+
+Finally, remember to update the test setup in UserControllerTests so that the mock ID Token contains a roles claim.
+
+Listing 12.5 Adding roles list to the mock ID Token
+@WebFluxTest(UserController.class) @Import(SecurityConfig.class) class UserControllerTests {
+
+...
+
+private SecurityMockServerConfigurers.OidcLoginMutator configureMockOidcLogin(User expectedUser)
+{ return mockOidcLogin().idToken(builder -> { builder.claim(StandardClaimNames.PREFERRED_USERNAME, expectedUser.username()); builder.claim(StandardClaimNames.GIVEN_NAME, expectedUser.firstName()); builder.claim(StandardClaimNames.FAMILY_NAME, expectedUser.lastName()); builder.claim("roles", expectedUser.roles()); });
+} }
+
+Adds a "roles" claim to the mock ID Token
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+417
+
+You can verify that the changes are correct by running the following command:
+$ ./gradlew test --tests UserControllerTests
+
+NOTE The roles claim configured in Keycloak will include our custom roles (employee and customer) together with a few extra roles managed and assigned by Keycloak itself.
+So far, we've configured Keycloak to include the user roles in the tokens and updated Edge Service to relay the Access Token to the applications downstream. We're now ready to start securing Catalog Service and Order Service with Spring Security and OAuth2.
+
+12.2
+
+Protecting APIs with Spring Security and OAuth2 (imperative)
+When a user accesses the Polar Bookshop application, Edge Service initiates the OpenID Connect authentication flow through Keycloak and ultimately receives an Access Token granting it access to downstream services on behalf of that user.
+In this section and the next one, you'll see how to secure Catalog Service and Order Service by requiring a valid Access Token to access their protected endpoints. In the OAuth2 authorization framework, they play the role of OAuth2 Resource Servers: the applications hosting protected data that a user can access through a third party (Edge Service, in our example).
+OAuth2 Resource Servers don't deal with user authentication. They receive an Access Token in the Authorization header of each HTTP request. Then they verify the signature and authorize the request according to the content of the token. We have already configured Edge Service to send over an Access Token when routing a request downstream. Now you'll see how to use that token on the receiver side. This section will guide you through securing Catalog Service, built on the imperative Spring stack. The next section will show you how to achieve the same result in Order Service, built on the reactive Spring stack.
+
+12.2.1 Securing Spring Boot as an OAuth2 Resource Server
+The first step in securing a Spring Boot application leveraging OAuth2 is to add a dependency on the dedicated Spring Boot starter that includes Spring Security and OAuth2 support for Resource Servers.
+In the Catalog Service project (catalog-service), open the build.gradle file, and add the new dependency. Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 12.6 Adding dependency for Spring Security OAuth2 Resource Server
+
+dependencies {
+...
+implementation 'org.springframework.boot:
+ spring-boot-starter-oauth2-resource-server'
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+418
+
+CHAPTER 12 Security: Authorization and auditing
+
+Next, let's configure the integration between Spring Security and Keycloak.
+CONFIGURING THE INTEGRATION BETWEEN SPRING SECURITY AND KEYCLOAK Spring Security supports protecting endpoints using two data formats for the Access Token: JWT and opaque tokens. We'll work with Access Tokens defined as JWTs, similar to what we did for ID Tokens. With Access Tokens, Keycloak grants Edge Service access to downstream applications on behalf of the user. When the Access Token is a JWT, we can also include relevant information as claims about the authenticated user and propagate this context to Catalog Service and Order Service with ease. In contrast, opaque tokens would require the application downstream to contact Keycloak every time to fetch the information associated with the token.
+Configuring Spring Security to integrate with Keycloak as an OAuth2 Resource Server is more straightforward than the OAuth2 Client scenario. When working with JWTs, the application will contact Keycloak mainly to fetch the public keys necessary to verify the token's signature. Using the issuer-uri property, similar to what we did for Edge Service, we'll let the application auto-discover the Keycloak endpoint where it can find the public keys.
+The default behavior is for the application to fetch the public keys lazily upon the first received HTTP request rather than at startup, both for performance and coupling reasons (you don't need Keycloak up and running when starting the application). OAuth2 Authorization Servers provide their public keys using the JSON Web Key (JWK) format. The collection of public keys is called a JWK Set. The endpoint where Keycloak exposes its public keys is called the JWK Set URI. Spring Security will automatically rotate the public keys whenever Keycloak makes new ones available.
+For each incoming request containing an Access Token in the Authorization header, Spring Security will automatically validate the token's signature using the public keys provided by Keycloak and decode its claims via a JwtDecoder object, which is auto-configured behind the scenes.
+In the Catalog Service project (catalog-service), open the application.yml file, and add the following configuration.
+
+Listing 12.7 Configuring Catalog Service as an OAuth2 Resource Server
+
+spring: security: oauth2: resourceserver: jwt:
+
+OAuth2 doesn't enforce a data format for Access Tokens, so we must be explicit about our choice. In this case, we want to use JWT.
+
+issuer-uri:
+http://localhost:8080/realms/PolarBookshop
+
+The Keycloak URL providing information about all the relevant OAuth2 endpoints for the specific realm
+
+NOTE Explaining the cryptographic algorithm used to sign the Access Token is out of scope for this book. If you'd like to learn more about cryptography, you might want to look up Real-World Cryptography by David Wong (Manning, 2021).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+419
+
+The integration between Catalog Service and Keycloak is now established. Next you'll define some basic security policies to protect the application endpoints.
+DEFINING SECURITY POLICIES FOR JWT AUTHENTICATION For the Catalog Service application, we want to enforce the following security policies:
+ GET requests to fetch books should be allowed without authentication.  All other requests should require authentication.  The application should be configured as an OAuth2 Resource Server and use
+JWT authentication.  The flow for handling JWT authentication should be stateless.
+Let's expand on the last policy. Edge Service triggers the user authentication flow and leverages the web session to store data like ID Tokens and Access Tokens that would otherwise get lost at the end of each HTTP request, forcing a user to authenticate at each request. To make it possible for the application to scale, we used Spring Session to store the web session data in Redis and keep the application stateless.
+Unlike Edge Service, Catalog Service only needs an Access Token to authenticate a request. Since the token is always provided in each HTTP request to a protected endpoint, Catalog Service doesn't need to store any data between requests. We call this strategy stateless authentication or token-based authentication. We use JWTs as Access Tokens, so we can also refer to it as JWT authentication.
+Now on to the code. In the Catalog Service project, create a new SecurityConfig class in the com.polarbookshop.catalogservice.config package. Similar to what we did for Edge Service, we can use the DSL provided by HttpSecurity to build a SecurityFilterChain configured with the required security policies.
+
+Listing 12.8 Configuring security policies and JWT authentication
+
+@EnableWebSecurity public class SecurityConfig {
+@Bean
+
+Enables Spring MVC support for Spring Security
+
+SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+Any other request requires
+authentication.
+
+return http .authorizeHttpRequests(authorize -> authorize .mvcMatchers(HttpMethod.GET, "/", "/books/**") .permitAll() .anyRequest().authenticated()
+
+Allows users to fetch greetings and books without being authenticated
+
+) .oauth2ResourceServer(
+OAuth2ResourceServerConfigurer::jwt ) .sessionManagement(sessionManagement ->
+
+Enables OAuth2 Resource Server support using the default configuration based on JWT (JWT authentication)
+
+sessionManagement
+
+.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+Each request must include an Access Token, so there's no need to keep a user session alive between requests. We want it to be stateless.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+420
+
+CHAPTER 12 Security: Authorization and auditing
+
+.csrf(AbstractHttpConfigurer::disable)
+
+.build(); } }
+
+Since the authentication strategy is stateless and doesn't involve a browser-based client, we
+can safely disable the CSRF protection.
+
+Let's check if it works. First, the Polar UI, Keycloak, Redis, and PostgreSQL containers should be started. Open a Terminal window, navigate to the folder where you keep your Docker Compose configuration (polar-deployment/docker) and run the following:
+
+$ docker-compose up -d polar-ui polar-keycloak polar-redis polar-postgres
+
+Then run both Edge Service and Catalog Service (./gradlew bootRun from each project). Finally, open a browser window, and go to http://localhost:9000.
+Ensure you can see the list of books in the catalog without being authenticated, but not add, update, or delete them. Then log in as Isabelle (isabelle/password). She is an employee of the bookshop, so she should be allowed to modify the books in the catalog. Next, log in as Bjorn (bjorn/password). He is a customer, so he shouldn't be able to change anything in the catalog.
+Under the hood, the Angular application fetches the user roles from the /user endpoint exposed by Edge Service and uses them to block pieces of functionality. That improves the user experience, but it's not secure. The actual endpoints exposed by Catalog Service don't take roles into account. We need to enforce role-based authorization. That's the topic of the next section.
+
+12.2.2 Role-based access control with Spring Security and JWT
+So far, when talking about authorization, we referred to granting an OAuth2 Client (Edge Service) access to an OAuth2 Resource Server (like Catalog Service) on behalf of the user. Now we'll move from application authorization to user authorization. What can an authenticated user do in the system?
+Spring Security associates each authenticated user with a list of GrantedAuthority objects that model the authorities the user has been granted. Granted authorities can be used to represent fine-grained permissions, roles, or even scopes and come from different sources depending on the authentication strategy. The authorities are available through the Authentication object representing the authenticated user and stored in the SecurityContext.
+Since Catalog Service is configured as an OAuth2 Resource Server and uses JWT authentication, Spring Security extracts the list of scopes from the scopes claim of the Access Token and uses them as granted authorities for the given user automatically. Each GrantedAuthority object built in this way will be named with the SCOPE_ prefix and the scope value.
+The default behavior is acceptable in many scenarios where scopes are used to model permissions, but it doesn't fit our case where we rely on user roles to know which privileges each user has. We want to set up a role-based access control (RBAC)
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+421
+
+strategy using the user roles provided in the roles claim of the Access Token (see figure 12.6). In this section, I'll show you how to define a custom converter for the Access Token to build a list of GrantedAuthority objects using the values in the roles claim and the ROLE_ prefix. Then we'll use those authorities to define authorization rules for the endpoints of Catalog Service.
+
+Conversion of user roles from JWT to GrantedAuthority objects
+
+SecurityContext
+
+{ "iss": "https://sso.polarbookshop.com", "sub": "isabelle", "roles": [ "customer", "employee" ], "iat": 1516239022, "exp": 1893456000
+}
+
+Roles extracted as
+
+ROLE_customer GrantedAuthority
+ROLE_employee
+
+Contains
+
+Contains
+
+Authentication Contains
+
+Access Token (JWT)
+
+GrantedAuthority
+
+Figure 12.6 How the user roles listed in the Access Token (JWT) are converted into GrantedAuthority objects used by Spring Security for RBAC
+
+NOTE You might be wondering why we're using the SCOPE_ or ROLE_ prefix. Since granted authorities can be used to represent different items (roles, scopes, permissions), Spring Security uses prefixes to group them. We'll rely on this default naming convention for the Polar Bookshop example, but it's possible to use different prefixes or even no prefixes at all. For more information, refer to the Spring Security documentation (https://spring.io/projects/ spring-security).
+EXTRACTING USER ROLES FROM THE ACCESS TOKEN Spring Security provides a JwtAuthenticationConverter class we can use to define a custom strategy to extract information from a JWT. In our case, the JWT is an Access Token, and we want to configure how to build GrantedAuthority objects from the values in the roles claim. In the Catalog Service project (catalog-service), open the SecurityConfig class and define a new JwtAuthenticationConverter bean.
+Listing 12.9 Mapping the roles from the JWT to granted authorities
+@EnableWebSecurity public class SecurityConfig {
+...
+@Bean public JwtAuthenticationConverter jwtAuthenticationConverter() {
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+422
+
+CHAPTER 12 Security: Authorization and auditing
+
+var jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+jwtGrantedAuthoritiesConverter .setAuthorityPrefix("ROLE_");
+jwtGrantedAuthoritiesConverter .setAuthoritiesClaimName("roles");
+
+Defines a converter to map claims to GrantedAuthority objects
+Applies the "ROLE_" prefix to each user role
+
+var jwtAuthenticationConverter = new JwtAuthenticationConverter();
+
+Extracts the list of roles from the roles claim
+
+jwtAuthenticationConverter
+
+.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);
+
+return jwtAuthenticationConverter;
+
+}
+
+}
+
+Defines a strategy to convert a JWT. We'll only customize how to build granted authorities out of it.
+
+With this bean in place, Spring Security will associate a list of GrantedAuthority objects with each authenticated user, and we can use them to define authorization policies.
+DEFINING AUTHORIZATION POLICIES BASED ON USER ROLES The Catalog Service endpoints should be protected according to the following policies:
+ All GET requests sent to the /, /books or /books/{isbn} endpoints should be allowed, even without authentication.
+ Any other request should require both user authentication and the employee role.
+Spring Security provides an expression-based DSL for defining authorization policies. The most generic one is hasAuthority("ROLE_employee"), which you can use to check for any type of authority. In our case, authorities are roles, so we can use the most descriptive hasRole("employee") and drop the prefix (which is added by Spring Security under the hood).
+
+Listing 12.10 Applying RBAC to limit write access to users with the employee role
+
+@EnableWebSecurity public class SecurityConfig {
+
+Any other request requires not only authentication but also the employee role (which is the same as the ROLE_employee authority).
+
+@Bean
+
+SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
+return http
+
+Allows users to fetch greetings
+and books without being authenticated
+
+.authorizeHttpRequests(authorize -> authorize .mvcMatchers(HttpMethod.GET, "/", "/books/**") .permitAll() .anyRequest().hasRole("employee")
+) .oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt)
+
+.sessionManagement(sessionManagement -> sessionManagement
+
+.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+.csrf(AbstractHttpConfigurer::disable)
+
+.build();
+
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+423
+
+... }
+
+Now you can rebuild and run Catalog Service (./gradlew bootRun) and go through the same flows as before. This time Catalog Service will ensure that only the bookshop employees are allowed to add, update, and delete books.
+Finally, stop the running applications (Ctrl-C) and containers (docker-compose down).
+NOTE To learn more about the authorization architecture in Spring Security and the different strategies available for access control, you can refer to chapters 7 and 8 in Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where they are explained in great detail.
+Next I'll guide you through some techniques for testing security in an imperative Spring Boot application configured as an OAuth2 Resource Server.
+
+12.2.3 Testing OAuth2 with Spring Security and Testcontainers
+When it comes to security, writing autotests is usually challenging. Fortunately, Spring Security provides us with convenient utilities to verify the security setup in slice tests.
+This section will show you how to write slice tests for the web slice using mock Access Tokens and full integration tests relying on an actual Keycloak container run via Testcontainers.
+Before starting, we need to add new dependencies on Spring Security Test and Testcontainers Keycloak. Open the build.gradle file for the Catalog Service project (catalog-service), and update it as follows. Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 12.11 Adding dependencies to test Spring Security and Keycloak
+
+ext { ... set('testKeycloakVersion', "2.3.0")
+}
+
+The version of Testcontainers Keycloak
+
+dependencies {
+
+...
+
+testImplementation 'org.springframework.security:spring-security-test'
+
+testImplementation 'org.testcontainers:junit-jupiter'
+
+testImplementation "com.github.dasniko:
+ testcontainers-keycloak:${testKeycloakVersion}"
+}
+
+Provides Keycloak testing utilities on top of Testcontainers
+
+TESTING SECURED REST CONTROLLERS WITH @WEBMVCTEST AND SPRING SECURITY First, let's update the BookControllerMvcTests class to cover the new scenarios, depending on the user authentication and authorization. For example, we could write test cases for DELETE operations in these situations:
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+424
+
+CHAPTER 12 Security: Authorization and auditing
+
+ The user is authenticated and has the employee role.  The user is authenticated but doesn't have the employee role.  The user is not authenticated.
+Delete operations are only allowed to the bookshop employees, so only the first request will return a successful answer.
+As part of the OAuth2 Access Token validation, Spring Security relies on the public keys provided by Keycloak to verify the JWT signature. Internally, the framework configures a JwtDecoder bean to decode and verify a JWT using those keys. In the context of a web slice test, we can provide a mock JwtDecoder bean so that Spring Security skips the interaction with Keycloak (which we'll validate later in a full integration test).
+
+Listing 12.12 Verifying security policies at the web layer with slice tests
+
+@WebMvcTest(BookController.class) @Import(SecurityConfig.class) class BookControllerMvcTests {
+@Autowired MockMvc mockMvc;
+
+Imports the application's security configuration
+
+@MockBean JwtDecoder jwtDecoder;
+...
+
+Mocks the JwtDecoder so that the application doesn't try to call Keycloak and get the public keys for decoding the Access Token
+
+@Test
+
+void whenDeleteBookWithEmployeeRoleThenShouldReturn204()
+
+throws Exception {
+var isbn = "7373731394"; mockMvc
+
+Mutates the HTTP request with a mock JWT-formatted Access Token for a user with the "employee" role
+
+.perform(MockMvcRequestBuilders.delete("/books/" + isbn)
+
+.with(SecurityMockMvcRequestPostProcessors.jwt()
+
+.authorities(new SimpleGrantedAuthority("ROLE_employee"))))
+
+.andExpect(MockMvcResultMatchers.status().isNoContent());
+
+}
+
+@Test
+
+void whenDeleteBookWithCustomerRoleThenShouldReturn403()
+
+throws Exception {
+var isbn = "7373731394"; mockMvc
+
+Mutates the HTTP request with a mock JWT-formatted Access Token for a user with the "customer" role
+
+.perform(MockMvcRequestBuilders.delete("/books/" + isbn)
+
+.with(SecurityMockMvcRequestPostProcessors.jwt()
+
+.authorities(new SimpleGrantedAuthority("ROLE_customer"))))
+
+.andExpect(MockMvcResultMatchers.status().isForbidden());
+
+}
+
+@Test void whenDeleteBookNotAuthenticatedThenShouldReturn401()
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+425
+
+throws Exception {
+var isbn = "7373731394"; mockMvc
+.perform(MockMvcRequestBuilders.delete("/books/" + isbn)) .andExpect(MockMvcResultMatchers.status().isUnauthorized()); } }
+
+Open a Terminal window, navigate to the Catalog Service root folder, and run the newly added tests as follows:
+
+$ ./gradlew test --tests BookControllerMvcTests
+
+Feel free to add more web slice autotests to cover GET, POST, and PUT requests. For inspiration, you can refer to the source code accompanying the book (Chapter12/ 12-end/catalog-service).
+INTEGRATION TESTS WITH @SPRINGBOOTTEST, SPRING SECURITY, AND TESTCONTAINERS The integration tests we wrote in the previous chapters will not work anymore for two reasons. First, all POST, PUT, and DELETE requests will fail because we are not providing any valid OAuth2 Access Token. Even if we were, there is no Keycloak up and running, required by Spring Security to fetch the public keys used to validate the Access Tokens.
+You can verify the failure by running the following command from the Catalog Service root folder:
+
+$ ./gradlew test --tests CatalogServiceApplicationTests
+
+We have already seen how to use Testcontainers to write integration tests against data services like a PostgreSQL database, making our tests more reliable and ensuring environment parity. In this section we'll do the same for Keycloak.
+Let's start by configuring a Keycloak container via Testcontainers. Open the CatalogServiceApplicationTests class and add the following setup.
+
+Listing 12.13 Setup for a Keycloak test container
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+
+@ActiveProfiles("integration")
+
+@Testcontainers class CatalogServiceApplicationTests {
+@Autowired
+
+Activates automatic startup and cleanup of test containers
+
+private WebTestClient webTestClient; @Container
+
+Defines a Keycloak container for testing
+
+private static final KeycloakContainer keycloakContainer =
+
+new KeycloakContainer("quay.io/keycloak/keycloak:19.0")
+
+.withRealmImportFile("test-realm-config.json");
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+426
+
+CHAPTER 12 Security: Authorization and auditing
+
+@DynamicPropertySource
+
+static void dynamicProperties(DynamicPropertyRegistry registry) {
+
+registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
+
+() -> keycloakContainer.getAuthServerUrl() + "realms/PolarBookshop");
+
+}
+... }
+
+Overwrites the Keycloak Issuer URI configuration to point to the test Keycloak instance
+
+The Keycloak test container is initialized via a configuration file I included in the code repository accompanying this book (Chapter12/12-end/catalog-service/src/test/ resources/test-realm-config.json). Go ahead and copy it over to the src/test/resources folder of your Catalog Service project (catalog-service).
+In production, we would call Catalog Service via Edge Service, which is responsible for authenticating users and relaying Access Tokens to the downstream applications. We now want to test Catalog Service in isolation and verify different authorization scenarios. Therefore, we need to generate some Access Tokens first, so that we can use them to call the Catalog Service endpoints under testing.
+The Keycloak configuration I provided in the JSON file includes the definition of a test Client (polar-test) that we can use to authenticate users via a username and password directly, instead of going through the browser-based flow we implemented in Edge Service. In OAuth2, such a flow is called a Password Grant, and it's not recommended for production use. In the following section, we'll use it just for testing purposes.
+Let's set up CatalogServiceApplicationTests to authenticate with Keycloak as Isabelle and Bjorn so that we can obtain the Access Tokens we need to call the Catalog Service's protected endpoints. Keep in mind that Isabelle is both a customer and employee, whereas Bjorn is only a customer.
+
+Listing 12.14 Setup for obtaining test Access Tokens
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT) @ActiveProfiles("integration") @Testcontainers class CatalogServiceApplicationTests {
+private static KeycloakToken bjornTokens; private static KeycloakToken isabelleTokens; ...
+
+@BeforeAll static void generateAccessTokens() {
+WebClient webClient = WebClient.builder()
+
+A WebClient used to call Keycloak
+
+.baseUrl(keycloakContainer.getAuthServerUrl()
+
++ "realms/PolarBookshop/protocol/openid-connect/token")
+
+.defaultHeader(HttpHeaders.CONTENT_TYPE,
+
+MediaType.APPLICATION_FORM_URLENCODED_VALUE) .build();
+isabelleTokens = authenticateWith(
+
+Authenticates as Isabelle and obtains an Access Token
+
+"isabelle", "password", webClient);
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.2 Protecting APIs with Spring Security and OAuth2 (imperative)
+
+427
+
+bjornTokens = authenticateWith( "bjorn", "password", webClient);
+}
+
+Authenticates as Bjorn and obtains an Access Token
+
+private static KeycloakToken authenticateWith(
+
+String username, String password, WebClient webClient
+
+){ return webClient .post() .body(
+
+Uses the Password Grant flow to authenticate with Keycloak directly
+
+BodyInserters.fromFormData("grant_type", "password")
+
+.with("client_id", "polar-test")
+
+.with("username", username)
+
+.with("password", password)
+
+) .retrieve() .bodyToMono(KeycloakToken.class) .block();
+
+Blocks until a result is available. This is how we use WebClient imperatively rather than reactively.
+
+}
+private record KeycloakToken(String accessToken) { @JsonCreator private KeycloakToken(
+
+Instructs Jackson to use this constructor when deserializing JSON into KeycloakToken objects
+
+@JsonProperty("access_token") final String accessToken
+
+){
+
+this.accessToken = accessToken;
+
+}
+
+}
+
+}
+
+Finally, we can update the test cases in CatalogServiceApplicationTests to cover several authentication and authorization scenarios. For example, we could write test cases for POST operations in these situations:
+ The user is authenticated and has the employee role (extending the existing test case).
+ The user is authenticated but doesn't have the employee role (new test case).  The user is not authenticated (new test case).
+NOTE In the context of an OAuth2 Resource Server, authentication means token authentication. In this case, it happens by providing an Access Token in the Authorization header of each HTTP request.
+Create operations are only allowed to the bookshop employees, so only the first request will return a successful answer.
+
+Listing 12.15 Verifying security scenarios in integration tests
+@Test void whenPostRequestThenBookCreated() {
+var expectedBook = Book.of("1231231231", "Title", "Author", 9.90, "Polarsophia");
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+428
+
+CHAPTER 12 Security: Authorization and auditing
+
+webTestClient.post().uri("/books") .headers(headers ->
+
+Sends a request to add a book to the catalog as an authenticated employee user (Isabelle)
+
+headers.setBearerAuth(isabelleTokens.accessToken()))
+
+.bodyValue(expectedBook)
+
+.exchange() .expectStatus().isCreated()
+.expectBody(Book.class).value(actualBook -> {
+
+The book has been successfully created (201).
+
+assertThat(actualBook).isNotNull();
+
+assertThat(actualBook.isbn()).isEqualTo(expectedBook.isbn());
+
+});
+
+}
+
+@Test
+
+void whenPostRequestUnauthorizedThen403() {
+
+var expectedBook = Book.of("1231231231", "Title", "Author",
+
+9.90, "Polarsophia");
+webTestClient.post().uri("/books") .headers(headers ->
+
+Sends a request to add a book to the catalog as an authenticated customer user (Bjorn)
+
+headers.setBearerAuth(bjornTokens.accessToken()))
+
+.bodyValue(expectedBook) .exchange() .expectStatus().isForbidden(); }
+
+The book has not been created because the user doesn't have the correct authorization, no "employee" role (403).
+
+@Test void whenPostRequestUnauthenticatedThen401() {
+var expectedBook = Book.of("1231231231", "Title", "Author", 9.90, "Polarsophia");
+
+webTestClient.post().uri("/books") .bodyValue(expectedBook) .exchange() .expectStatus().isUnauthorized();
+}
+The book has not been created because the user is not authenticated (401).
+
+Sends a request to add a book to the catalog as an unauthenticated user
+
+Open a Terminal window, navigate to the Catalog Service root folder, and run the newly added tests as follows:
+
+$ ./gradlew test --tests CatalogServiceApplicationTests
+
+There are still tests failing. Go ahead and update them by including the right Access Token (Isabelle's or Bjorn's) in any POST, PUT, or DELETE request, as you learned in the previous example. When you're done, rerun the tests and verify that they are all successful. For inspiration, you can refer to the source code accompanying this book (Chapter12/12-end/catalog-service).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.3 Protecting APIs with Spring Security and OAuth2 (reactive)
+
+429
+
+12.3
+
+Protecting APIs with Spring Security and OAuth2 (reactive)
+Securing reactive Spring Boot applications like Order Service is similar to what we did for Catalog Service. Spring Security provides intuitive and consistent abstractions across the two stacks, which makes it easy to move from one stack to the other.
+In this section, I'll guide you through configuring Order Service as an OAuth2 Resource Server, enabling JWT authentication, and defining security policies for the web endpoints.
+
+12.3.1 Securing Spring Boot as an OAuth2 Resource Server
+The Spring Boot starter dependency that includes Spring Security and OAuth2 support for Resource Servers is the same for both imperative and reactive applications. In the Order Service project (order-service), open the build.gradle file, and add the new dependency. Remember to refresh or reimport the Gradle dependencies after the new addition.
+
+Listing 12.16 Adding dependency for Spring Security OAuth2 Resource Server
+dependencies { ... implementation 'org.springframework.boot:
+ spring-boot-starter-oauth2-resource-server'
+}
+
+Next we'll configure the integration between Spring Security and Keycloak.
+CONFIGURING THE INTEGRATION BETWEEN SPRING SECURITY AND KEYCLOAK The strategy for integrating Spring Security with Keycloak will be similar to what we did in Catalog Service. Open the Order Service project (order-service), and update the application.yml file with the following configuration.
+
+Listing 12.17 Configuring Order Service as an OAuth2 Resource Server
+
+spring: security: oauth2: resourceserver: jwt:
+
+OAuth2 doesn't enforce a data format for Access Tokens, so we must be explicit about our choice. In this case, we want to use JWT.
+
+issuer-uri:
+http://localhost:8080/realms/PolarBookshop
+
+The Keycloak URL providing information about all the relevant OAuth2 endpoints for the specific realm
+
+The integration between Order Service and Keycloak is now established. Next we'll define the necessary security policies to protect the application endpoints.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+430
+
+CHAPTER 12 Security: Authorization and auditing
+
+DEFINING SECURITY POLICIES FOR JWT AUTHENTICATION For the Order Service application, we want to enforce the following security policies:
+ All requests should require authentication.  The application should be configured as an OAuth2 Resource Server and use
+JWT authentication.  The flow for handling JWT authentication should be stateless.
+There are two main differences here from what we did in Catalog Service:
+ The reactive syntax is slightly different from its imperative counterpart, especially the part for enforcing JWT authentication (stateless).
+ We're not extracting user roles from the Access Token because the endpoints don't have special requirements depending on user roles.
+In the Order Service project, create a SecurityConfig class in a new com.polarbookshop.orderservice.config package. Then use the DSL provided by ServerHttpSecurity to build a SecurityWebFilterChain configured with the required security policies.
+
+Listing 12.18 Configuring security policies and JWT authentication for Order Service
+
+@EnableWebFluxSecurity public class SecurityConfig {
+@Bean
+
+Enables Spring WebFlux support for Spring Security
+
+SecurityWebFilterChain filterChain(ServerHttpSecurity http) {
+
+return http
+
+All requests require
+authentication.
+
+.authorizeExchange(exchange -> exchange .anyExchange().authenticated()
+) .oauth2ResourceServer(
+
+Enables OAuth2 Resource Server support using the default configuration based on JWT (JWT authentication)
+
+ServerHttpSecurity.OAuth2ResourceServerSpec::jwt)
+
+.requestCache(requestCacheSpec ->
+
+requestCacheSpec.requestCache(NoOpServerRequestCache.getInstance()))
+
+.csrf(ServerHttpSecurity.CsrfSpec::disable)
+
+.build(); } }
+Each request must include an Access Token, so there's no need to keep a session cache alive between requests. We want it to be stateless.
+
+Since the authentication strategy is stateless and doesn't involve a
+browser-based client, we can safely disable the CSRF protection.
+
+Let's check if this works. First, we need to run the backing services (Polar UI, Keycloak, Redis, RabbitMQ, and PostgreSQL). Open a Terminal window, navigate to the folder where you keep your Docker Compose configuration (polar-deployment/docker) and run the following:
+
+$ docker-compose up -d polar-ui polar-keycloak polar-redis \ polar-rabbitmq polar-postgres
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.3 Protecting APIs with Spring Security and OAuth2 (reactive)
+
+431
+
+Then run Edge Service, Catalog Service, and Order Service on the JVM (./gradlew bootRun from each project). Finally, open a browser window, and go to http://localhost:9000.
+Since Order Service doesn't have particular requirements depending on the user's role, you can log in with either Isabelle (isabelle/password) or Bjorn (bjorn/password). Then pick a book from the catalog, and submit an order for it. Since you're authenticated, you're allowed to create an order. When you're done, you can visit the Orders page to check all the submitted orders.
+"Wait a second! What do you mean, all the submitted orders?" I'm glad you asked. At the moment, each person can see the orders submitted by all users. Don't worry! Later in the chapter, we'll fix that.
+Before we do, though, we need to discuss how to test the new Order Service security policies. Stop the running applications (Ctrl-C) and containers (docker-compose down). The next section will show you how to test security in a reactive application.
+12.3.2 Testing OAuth2 with Spring Security and Testcontainers
+Testing secured reactive Spring Boot applications is similar to testing imperative applications. Before starting, we need to add new dependencies on Spring Security Test and Testcontainers Keycloak. The dependency adding JUnit5 support for Testcontainers is already there. Open the build.gradle file and update it as follows. Remember to refresh and reimport the Gradle dependencies after the new addition.
+
+Listing 12.19 Adding dependencies to test Spring Security and Keycloak
+
+ext { ... set('testKeycloakVersion', "2.3.0")
+}
+
+The version of Testcontainers Keycloak
+
+dependencies {
+
+...
+
+testImplementation 'org.springframework.security:spring-security-test'
+
+testImplementation 'org.testcontainers:junit-jupiter'
+testImplementation "com.github.dasniko:
+ testcontainers-keycloak:${testKeycloakVersion}"
+}
+
+Provides Keycloak testing utilities on top of Testcontainers
+
+We can implement full integration tests using @SpringBootTest and Testcontainers Keycloak. Since the setup is the same as for Catalog Service, I won't cover those tests here, but you can find them in the repository accompanying the book (Chapter12/ 12-end/order-service/src/test). Make sure you update those integration tests, or the application build will fail.
+In this section, we'll test the web slice of a reactive application when the endpoints are secured, much like we did for Catalog Service.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+432
+
+CHAPTER 12 Security: Authorization and auditing
+
+TESTING SECURED REST CONTROLLERS WITH @WEBFLUXTEST AND SPRING SECURITY We have already written autotests in OrderControllerWebFluxTests for the web slice using @WebFluxTest. Let's see now how to update them to take security into account.
+As part of the OAuth2 Access Token validation, Spring Security relies on the public keys provided by Keycloak to verify the JWT signature. Internally, the framework configures a ReactiveJwtDecoder bean to decode and verify a JWT using those keys. In the context of a web slice test, we can provide a mock ReactiveJwtDecoder bean so that Spring Security skips the interaction with Keycloak (which will be validated by full integration tests).
+
+Listing 12.20 Verifying security policies at the web layer with slice tests
+
+@WebFluxTest(OrderController.class) @Import(SecurityConfig.class) class OrderControllerWebFluxTests {
+@Autowired WebTestClient webClient;
+
+Imports the application security configuration
+
+@MockBean OrderService orderService;
+@MockBean ReactiveJwtDecoder reactiveJwtDecoder;
+
+Mocks the ReactiveJwtDecoder so that the application doesn't try to call Keycloak and get the public key for decoding the Access Token
+
+@Test
+
+void whenBookNotAvailableThenRejectOrder() {
+
+var orderRequest = new OrderRequest("1234567890", 3);
+
+var expectedOrder = OrderService.buildRejectedOrder(
+
+orderRequest.isbn(), orderRequest.quantity());
+
+given(orderService.submitOrder(
+
+orderRequest.isbn(), orderRequest.quantity()))
+
+.willReturn(Mono.just(expectedOrder));
+webClient .mutateWith(SecurityMockServerConfigurers .mockJwt()
+
+Mutates the HTTP request with a mock, JWT-formatted Access Token for a user with the "customer" role
+
+.authorities(new SimpleGrantedAuthority("ROLE_customer")))
+
+.post()
+
+.uri("/orders/")
+
+.bodyValue(orderRequest)
+
+.exchange()
+
+.expectStatus().is2xxSuccessful()
+
+.expectBody(Order.class).value(actualOrder -> {
+
+assertThat(actualOrder).isNotNull();
+
+assertThat(actualOrder.status()).isEqualTo(OrderStatus.REJECTED);
+
+});
+
+}
+
+}
+
+Open a Terminal window, navigate to the Order Service root folder, and run the newly added tests as follows:
+
+$ ./gradlew test --tests OrderControllerWebFluxTests
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.4 Protecting and auditing data with Spring Security and Spring Data
+
+433
+
+As always, you can find more test examples in the source code repository accompanying this book (Chapter12/12-end/order-service).
+12.4 Protecting and auditing data with Spring Security and Spring Data
+So far, we've looked at securing the APIs exposed by Spring Boot applications and handling concerns like authentication and authorization. What about data? Once you have Spring Security in place, you can also secure the business and data layers.
+Regarding the business logic, you can enable the method security feature to check for user authentication or authorization directly on business methods, leveraging annotations like @PreAuthorize. In the Polar Bookshop system, the business layer is not complex enough to require additional security policies, so I won't describe that.
+NOTE To learn more about how to use method authentication and authorization, refer to chapter 8 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020), where those topics are explained in great detail.
+On the other hand, the data layer requires some extra work to address two main concerns:
+ How can we tell which users created what data? Who changed it last?  How can we ensure that each user can only access their own book orders?
+This section will address both concerns. First I'll explain how to enable auditing for users' actions on data in both Catalog Service and Order Service. Then I'll walk you through the changes required by Order Service to keep the data private.
+12.4.1 Auditing data with Spring Security and Spring Data JDBC
+Let's start by considering Catalog Service, where the data layer is implemented with Spring Data JDBC. In chapter 5, you learned how to enable JDBC data auditing, and you configured it to save both the creation date and last modified date for each data entity. Building on top of that, we can now extend the audit scope to include the usernames of the person who created the entity and the person who modified it last.
+First we need to tell Spring Data where to get the information about the currently authenticated user. In the previous chapter, you learned that Spring Security stores information about authenticated users in an Authentication object, which is stored in a SecurityContext object available through the SecurityContextHolder. We can use that object hierarchy to specify how to extract the principal for Spring Data.
+DEFINING AN AUDITOR TO CAPTURE WHO CREATED OR UPDATED A JDBC DATA ENTITY In the Catalog Service project (catalog-service), open the DataConfig class. That's where we used the @EnableJdbcAuditing annotation to enable data auditing. Now, we'll also define an AuditorAware bean that should return the principal--the currently authenticated user.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+434
+
+CHAPTER 12 Security: Authorization and auditing
+
+Listing 12.21 Configuring user auditing in Spring Data JDBC
+
+@Configuration @EnableJdbcAuditing public class DataConfig {
+
+Enables entity auditing in Spring Data JDBC
+
+Returns the currently authenticated user for auditing purposes
+
+@Bean
+
+AuditorAware<String> auditorAware() {
+
+return () -> Optional
+
+.ofNullable(SecurityContextHolder.getContext())
+
+.map(SecurityContext::getAuthentication)
+
+.filter(Authentication::isAuthenticated)
+
+.map(Authentication::getName);
+
+} }
+Extracts the username for the currently authenticated user from the Authentication object
+
+Handles the case where a user is not authenticated, but is manipulating data. Since we protected all the endpoints, this case should never happen, but we'll include it for completeness.
+
+Extracts the SecurityContext object for the currently authenticated user from SecurityContextHolder
+Extracts the Authentication object for the currently authenticated user from SecurityContext
+
+ADDING AUDIT METADATA FOR USERS WHO CREATED OR UPDATED A JDBC DATA ENTITY When an AuditorAware bean is defined and auditing is enabled, Spring Data will use it to extract the principal. In our case, it's the username of the currently authenticated user, represented as a String. Then we can use @CreatedBy and @LastModifiedBy to annotate two new fields in the Book record. They will be populated by Spring Data automatically whenever a create or update operation is performed on the entity.
+
+Listing 12.22 Fields to capture user audit metadata in a JDBC entity
+
+public record Book (
+
+... @CreatedBy
+
+Who created the entity
+
+String createdBy, @LastModifiedBy
+
+Who modified the entity the last time
+
+String lastModifiedBy,
+
+){ public static Book of(String isbn, String title, String author, Double price, String publisher ){ return new Book(null, isbn, title, author, price, publisher, null, null, null, null, 0); }
+}
+
+After adding the new fields, we need to update a few classes using the Book all-args constructor, which now requires passing values for createdBy and lastModifiedBy.
+The BookService class contains the logic for updating books. Open it and change the editBookDetails() method to ensure the audit metadata is correctly passed along when calling the data layer.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.4 Protecting and auditing data with Spring Security and Spring Data
+
+435
+
+Listing 12.23 Including the existing audit metadata when updating a book
+@Service public class BookService {
+...
+
+public Book editBookDetails(String isbn, Book book) {
+
+return bookRepository.findByIsbn(isbn)
+
+.map(existingBook -> {
+
+var bookToUpdate = new Book(
+
+existingBook.id(),
+
+existingBook.isbn(),
+
+book.title(),
+
+book.author(),
+
+book.price(),
+
+book.publisher(),
+
+existingBook.createdDate(), existingBook.lastModifiedDate(), existingBook.createdBy(),
+
+Who created the entity
+
+existingBook.lastModifiedBy(), existingBook.version()); return bookRepository.save(bookToUpdate);
+
+Who updated the entity last
+
+})
+
+.orElseGet(() -> addBookToCatalog(book));
+
+}
+
+}
+
+I'll leave it to you to update the autotests in a similar way. You can also extend the tests in BookJsonTests to verify the serialization and deserialization of the new fields. As a reference, you can check Chapter12/12-end/catalog-service in the code repository accompanying this book. Make sure you update the tests that use the Book() constructor, or else the application build will fail.
+WRITING A FLYWAY MIGRATION TO ADD THE NEW AUDIT METADATA TO THE SCHEMA Since we changed the entity model, we need to update the database schema accordingly. Let's assume that Catalog Service is already in production, so we need a Flyway migration to update the schema in the next release. In chapter 5, we introduced Flyway to add version control to our databases. Each change to a schema must be registered as a migration, ensuring robust schema evolution and reproducibility.
+Any change to a database schema should also be backward compatible to support common deployment strategies for cloud native applications, like rolling upgrades, blue/green deployments, or canary releases (a subject we'll cover in chapter 15). In this case, we need to add new columns to the book table. As long as we don't make them mandatory, the change will be backward compatible. After we change the schema, any running instance of the previous release of Catalog Service will continue to work without errors, simply ignoring the new columns.
+In the src/main/resources/db/migration folder for the Catalog Service project, create a new V3__Add_user_audit.sql migration script to add two new columns to the book table. Ensure you type two underscores after the version number.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+436
+
+CHAPTER 12 Security: Authorization and auditing
+
+Listing 12.24 Adding new audit metadata to the book table
+
+ALTER TABLE book ADD COLUMN created_by varchar(255);
+ALTER TABLE book ADD COLUMN last_modified_by varchar(255);
+
+Add a column to hold the username of who created the row.
+Add a column to hold the username of who last updated the row.
+
+During the application's startup, Flyway will automatically go through all the migration scripts and apply those not yet applied.
+The tradeoff of enforcing backward-compatible changes is that we now have to treat as optional two fields that we need to have always filled in, and that may possibly fail validation if they're not. That is a common problem that can be solved over two subsequent releases of the application:
+1 In the first release, you add the new columns as optional and implement a data migration to fill in the new columns for all the existing data. For Catalog Service, you could use a conventional value to represent that we don't know who created or updated the entity, such as unknown or anonymous.
+2 In the second release, you can create a new migration to update the schema safely and make the new columns required.
+I'll leave that up to you if you'd like to do that. If you're interested in implementing data migrations, I recommend that you check out Flyway's official documentation (https://flywaydb.org).
+In the next section, you'll see how to test user-related auditing in Spring Data JDBC.
+
+12.4.2 Testing data auditing with Spring Data and @WithMockUser
+When we test security at the data layer, we're not interested in which authentication strategy has been adopted. The only thing we need is to know whether the operation is performed in the context of an authenticated request.
+The Spring Security Test project provides us with a handy @WithMockUser annotation we can use on test cases to make them run in an authenticated context. You can also add information about the mock user. Since we're testing auditing, we want to define at least a username that can be used as the principal.
+Let's extend the BookRepositoryJdbcTests class with new test cases covering data auditing for users.
+
+Listing 12.25 Testing data auditing when users are authenticated or not
+
+@DataJdbcTest @Import(DataConfig.class) @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE) @ActiveProfiles("integration") class BookRepositoryJdbcTests {
+
+...
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.4 Protecting and auditing data with Spring Security and Spring Data
+
+437
+
+@Test void whenCreateBookNotAuthenticatedThenNoAuditMetadata() {
+var bookToCreate = Book.of("1232343456", "Title", "Author", 12.90, "Polarsophia");
+var createdBook = bookRepository.save(bookToCreate);
+
+This test case is executed in an unauthenticated context.
+
+assertThat(createdBook.createdBy()).isNull(); assertThat(createdBook.lastModifiedBy()).isNull(); }
+@Test @WithMockUser("john") void whenCreateBookAuthenticatedThenAuditMetadata() {
+var bookToCreate = Book.of("1232343457", "Title", "Author", 12.90, "Polarsophia");
+var createdBook = bookRepository.save(bookToCreate);
+
+No audit data when there is no authenticated user
+This test case is executed in an authenticated context for the user "john."
+
+assertThat(createdBook.createdBy()) .isEqualTo("john");
+assertThat(createdBook.lastModifiedBy()) .isEqualTo("john");
+} }
+
+Audit data when there is an authenticated user
+
+Open a Terminal window, navigate to the Catalog Service root folder, and run the newly added tests as follows:
+
+$ ./gradlew test --tests BookRepositoryJdbcTests
+
+If you experience any failures, it might be because you haven't updated the test cases where the Book() constructor is used. We have added new fields to the domain model, so remember to update those test cases as well.
+12.4.3 Protecting user data with Spring Security and Spring Data R2DBC
+Similar to what we did in Catalog Service, this section will show you how to add data auditing for users in Order Service. Thanks to the abstractions provided by Spring Data and Spring Security, the implementation will not be much different, even though we're using Spring Data R2DBC and reactive Spring.
+Besides data auditing, Order Service has one additional critical requirement. Users should be able to access only their own orders. We need to ensure the privacy of all that data. This section will also walk you through the changes necessary to accomplish that result.
+DEFINING AN AUDITOR TO CAPTURE WHO CREATED OR UPDATED AN R2DBC DATA ENTITY Even in this case, we need to tell Spring Data where to get the information about the currently authenticated user. Since it's a reactive application, this time we'll get the SecurityContext object for the principal from the ReactiveSecurityContextHolder.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+438
+
+CHAPTER 12 Security: Authorization and auditing
+
+In the Order Service project (order-service), open the DataConfig class and add a ReactiveAuditorAware bean to return the username of the currently authenticated user.
+
+Listing 12.26 Configuring user auditing in Spring Data R2DBC
+
+@Configuration @EnableR2dbcAuditing public class DataConfig {
+
+Enables entity auditing in Spring Data R2DBC
+
+Returns the currently authenticated user for auditing purposes
+
+@Bean ReactiveAuditorAware<String> auditorAware() {
+return () -> ReactiveSecurityContextHolder.getContext()
+
+Extracts the SecurityContext object for the currently authenticated user from ReactiveSecurityContextHolder
+
+.map(SecurityContext::getAuthentication)
+
+.filter(Authentication::isAuthenticated)
+
+.map(Authentication::getName);
+
+} }
+Extracts the username of the currently authenticated user from the Authentication object
+
+Handles the case where a user is not authenticated, but it is manipulating data. Since we protected all the endpoints, this case should never happen, but we'll include it for completeness.
+
+Extracts the Authentication object for the currently authenticated user from SecurityContext
+
+ADDING AUDIT METADATA FOR USERS WHO CREATED OR UPDATED AN R2DBC DATA ENTITY When a ReactiveAuditorAware bean is defined and auditing is enabled, Spring Data will use it to extract the username of the currently authenticated user represented as a String. Even in this case, we can use @CreatedBy and @LastModifiedBy to annotate two new fields in the Order record. They will be populated by Spring Data automatically whenever a create or update operation is performed on the entity.
+
+Listing 12.27 Fields to capture user audit metadata in an R2DBC entity
+
+@Table("orders")
+
+public record Order (
+
+... @CreatedBy
+
+Who created the entity
+
+String createdBy,
+@LastModifiedBy String lastModifiedBy,
+
+Who modified the entity the last time
+
+){ public static Order of(String bookIsbn, String bookName, Double bookPrice, Integer quantity, OrderStatus status ){ return new Order(null, bookIsbn, bookName, bookPrice, quantity, status, null, null, null, null, 0); }
+}
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.4 Protecting and auditing data with Spring Security and Spring Data
+
+439
+
+After adding the new fields, we need to update a few classes using the Order all-args constructor, which now requires you to pass values for createdBy and lastModifiedBy.
+The OrderService class contains the logic for updating dispatched orders. Open it and change the buildDispatchedOrder() method to ensure the audit metadata is correctly passed along when calling the data layer.
+
+Listing 12.28 Including the existing audit metadata when updating an order
+@Service public class OrderService {
+...
+
+private Order buildDispatchedOrder(Order existingOrder) {
+
+return new Order(
+
+existingOrder.id(),
+
+existingOrder.bookIsbn(),
+
+existingOrder.bookName(),
+
+existingOrder.bookPrice(),
+
+existingOrder.quantity(),
+
+OrderStatus.DISPATCHED,
+
+existingOrder.createdDate(), existingOrder.lastModifiedDate(), existingOrder.createdBy(),
+
+Who created the entity
+
+existingOrder.lastModifiedBy(), existingOrder.version() ); }
+
+Who last updated the entity
+
+}
+
+I'll leave it to you to update the autotests in a similar way. You can also extend the tests in OrderJsonTests to verify the serialization of the new fields. As a reference, you can check Chapter12/12-end/order-service in the code repository accompanying this book. Ensure that you update the tests using the Order() constructor, or the application build will fail.
+WRITING A FLYWAY MIGRATION TO ADD THE NEW AUDIT METADATA TO THE SCHEMA Similar to what we did for Catalog Service, we need to write a migration to update the database schema with the two new fields hosting the usernames of who created an entity and who modified it last.
+In the src/main/resources/db/migration folder for the Order Service project, create a new V2__Add_user_audit.sql migration script to add two new columns to the orders table. Ensure you type two underscores after the version number.
+
+Listing 12.29 Adding new audit metadata to the orders table
+
+ALTER TABLE orders ADD COLUMN created_by varchar(255);
+ALTER TABLE orders ADD COLUMN last_modified_by varchar(255);
+
+Add a column for the username of who created the row.
+Add a column for the username of who last updated the row.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+440
+
+CHAPTER 12 Security: Authorization and auditing
+
+ENSURING USER DATA PRIVACY There's one last requirement we haven't covered yet: ensuring that order data is only accessed by the users who created the orders. No user should be able to see the orders from another person.
+There are a few different solutions for implementing this requirement in Spring. We'll follow these steps:
+1 Add a custom query to OrderRepository to filter orders based on the user who created them.
+2 Update OrderService to use the new query instead of the default findAll(). 3 Update OrderController to extract the username of the currently authenti-
+cated user from the security context and pass it to OrderService when asking for orders.
+WARNING We'll rely on a specific solution that ensures each user can only access their own orders via the /orders endpoint. However, this won't prevent developers from using the other methods exposed by OrderRepository in the future and leaking private data. If you'd like to know how to improve this solution, refer to chapter 17 of Spring Security in Action by Laurent¸iu Spilca (Manning, 2020).
+Let's start with OrderRepository. Using the conventions you learned in chapter 5, define a method to find all orders created by the specified user. Spring Data will generate an implementation for it at runtime.
+
+Listing 12.30 Defining a method returning orders created by a user
+
+public interface OrderRepository extends ReactiveCrudRepository<Order,Long>
+{ Flux<Order> findAllByCreatedBy(String userId);
+}
+
+Custom method to query only the orders created by the given user
+
+Next we need to update the getAllOrders() method in OrderService to accept a username as input and use the new query method provided by OrderRepository.
+
+Listing 12.31 Returning orders only for the specified user
+@Service public class OrderService {
+private final OrderRepository orderRepository;
+public Flux<Order> getAllOrders(String userId) { return orderRepository.findAllByCreatedBy(userId);
+}
+... }
+
+When requesting all orders, the response includes only those belonging to the given user.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12.4 Protecting and auditing data with Spring Security and Spring Data
+
+441
+
+Finally, let's update the getAllOrders() method in OrderController. As you learned in the previous chapter, you can autowire an object representing the currently authenticated user through the @AuthenticationPrincipal annotation. In Edge Service, the object was of type OidcUser because it's based on OpenID Connect authentication. Since Order Service is configured with JWT authentication, the principal will be of type Jwt. We can use the JWT (an Access Token) to read the sub claim containing the username for which the Access Token was generated (the subject).
+
+Listing 12.32 Getting the username and returning only orders created by them
+
+@RestController @RequestMapping("orders") public class OrderController {
+private final OrderService orderService;
+
+@GetMapping public Flux<Order> getAllOrders(
+@AuthenticationPrincipal Jwt jwt
+
+Autowires the JWT representing the currently authenticated user
+
+){
+
+return orderService.getAllOrders(jwt.getSubject()); }
+... }
+
+Extracts the subject of the JWT and uses it as the user identifier
+
+That's it for Order Service. In the next section, you'll write some autotests to verify the data auditing and protection requirements.
+12.4.4 Testing data auditing and protection with @WithMockUser and Spring Data R2DBC
+In the previous section we configured data auditing for users and enforced a policy to return only the orders for the currently authenticated user. This section will show you how to test the data auditing as a slice test. To verify the data protection requirement, you can refer to the repository accompanying the book and check how it's been covered by the integration tests in the OrderServiceApplicationTests class (Chapter12/12-end/order-service/src/test/java).
+Data auditing is applied at the repository level. We can extend the OrderRepositoryR2dbcTests class with extra test cases covering the scenario where the user is authenticated and when it is not.
+Similar to what we did in Catalog Service, we can use the @WithMockUser annotation from Spring Security to execute a test method in an authenticated context, relying on a mock user representation.
+
+Listing 12.33 Testing data auditing when users are authenticated or not
+@DataR2dbcTest @Import(DataConfig.class) @Testcontainers
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+442
+
+CHAPTER 12 Security: Authorization and auditing
+
+class OrderRepositoryR2dbcTests { ...
+
+@Test
+
+void whenCreateOrderNotAuthenticatedThenNoAuditMetadata() {
+
+var rejectedOrder = OrderService.buildRejectedOrder( "1234567890", 3);
+
+StepVerifier.create(orderRepository.save(rejectedOrder))
+
+.expectNextMatches(order -> Objects.isNull(order.createdBy()) &&
+
+Objects.isNull(order.lastModifiedBy())) .verifyComplete(); }
+@Test
+
+When the user is not authenticated, no audit metadata is saved.
+
+@WithMockUser("marlena")
+
+void whenCreateOrderAuthenticatedThenAuditMetadata() {
+
+var rejectedOrder = OrderService.buildRejectedOrder( "1234567890", 3);
+
+StepVerifier.create(orderRepository.save(rejectedOrder))
+
+.expectNextMatches(order -> order.createdBy().equals("marlena") &&
+
+order.lastModifiedBy().equals("marlena"))
+
+.verifyComplete(); } }
+
+When the user is authenticated, the information about who created or updated the entity is correctly included in the data.
+
+Open a Terminal window, navigate to the Catalog Service root folder, and run the newly added tests as follows:
+
+$ ./gradlew test --tests OrderRepositoryR2dbcTests
+
+If you experience any failures, it might be because you haven't updated the test cases where the Order() constructor is used. We have added new fields to the domain model, so remember to update those test cases as well.
+That concludes our discussion of authentication, authorization, and auditing for both imperative and reactive cloud native applications using Spring Boot, Spring Security, Spring Data, and Keycloak.
+
+Polar Labs
+Feel free to apply what you have learned in the previous chapters and update Catalog Service and Order Service for deployment.
+1 Update the Docker Compose definitions for both applications to configure the Keycloak URL. You can use the container name (polar-keycloak:8080), which gets resolved by the built-in Docker DNS.
+2 Update the Kubernetes manifests for both applications to configure the Keycloak URL. You can use the Keycloak Service name (polar-keycloak) as the URL, since all interactions happen within the cluster.
+You can refer to the Chapter12/12-end folder in the code repository accompanying the book to check the final results (https://github.com/ThomasVitale/cloud-native -spring-in-action). You can deploy the backing services from the manifests available in
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Summary
+
+443
+
+the Chapter12/12-end/polar-deployment/kubernetes/platform/development folder with kubectl apply -f services or the entire cluster with ./create-cluster.sh.
+Summary
+ In an OIDC/OAuth2 setup, the Client (Edge Service) is granted access to a Resource Server (Catalog Service and Order Service) on behalf of the user through an Access Token.
+ Spring Cloud Gateway provides a TokenRelay filter to add the Access Token to any request routed downstream automatically.
+ Following the JWT format, ID Tokens and Access Tokens can propagate relevant information as claims about the authenticated user. For example, you can add a roles claim and configure Spring Security with authorization policies depending on the user role.
+ Spring Boot applications can be configured as OAuth2 Resource Servers using Spring Security.
+ In an OAuth2 Resource Server, the strategy for authenticating users is entirely based on a valid Access Token provided in the Authorization header of each request. We call it JWT authentication.
+ In an OAuth2 Resource Server, security policies are still enforced through a SecurityFilterChain (imperative) or SecurityWebFilterChain (reactive) bean.
+ Spring Security represents permissions, roles, and scopes as GrantedAuthority objects.
+ You can provide a custom JwtAuthenticationConverter bean to define how to extract granted authorities from a JWT, for example, using the roles claim.
+ Granted authorities can be used to adopt an RBAC strategy and protect endpoints, depending on the user role.
+ The Spring Data libraries support auditing to track who created an entity and who updated it last. You can enable this feature in both Spring Data JDBC and Spring Data R2DBC by configuring an AuditorAware (or ReactiveAuditorAware) bean to return the username of the currently authenticated user.
+ When data auditing is enabled, you can use the @CreatedBy and @LastModifiedBy annotations to automatically inject the right values when a create or update operation occurs.
+ Testing security is challenging, but Spring Security provides convenient utilities to make that easier, including expressions that mutate HTTP requests to include a JWT Access Token (.with(jwt()) or .mutateWith(mockJwt())) or to run a test case in a specific security context for a given user (@WithMockUser).
+ Testcontainers can help write full integration tests by using an actual Keycloak container to verify the interactions with Spring Security.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Part 4
+Cloud native production
+It's been an incredible journey so far. Chapter after chapter, we have gone
+through patterns, principles, and best practices for working with cloud native applications, and we've built a bookshop system using Spring Boot and Kubernetes. It's time to prepare for production. Part 4 guides you through the last few steps to make your cloud native applications production-ready, addressing concerns like observability, configuration management, secrets management, and deployment strategies. It also covers serverless and native images.
+Chapter 13 describes how to make your cloud native applications observable using Spring Boot Actuator, OpenTelemetry, and the Grafana observability stack. You'll learn how to configure Spring Boot applications to produce relevant telemetry data, such as logs, health, metrics, traces, and more. Chapter 14 covers advanced configuration and secrets management strategies, including Kubernetes-native options like ConfigMaps, Secrets, and Kustomize. Chapter 15 guides you through the final steps of your cloud native journey and teaches you how to configure Spring Boot for production. You'll then set up continuous deployment for your applications and deploy them to a Kubernetes cluster in the public cloud, adopting a GitOps strategy. Finally, chapter 16 covers serverless architectures and functions with Spring Native and Spring Cloud Function. You'll also learn about Knative and its powerful features that provide a superior developer experience on top of Kubernetes.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Observability and monitoring
+This chapter covers
+ Logging with Spring Boot, Loki, and Fluent Bit  Using health probes with Spring Boot Actuator
+and Kubernetes  Producing metrics with Spring Boot Actuator,
+Prometheus, and Grafana  Configuring distributed tracing with OpenTelemetry
+and Tempo  Managing applications with Spring Boot Actuator
+In the previous chapters, you learned about several patterns and technologies you can use to build secure, scalable, and resilient applications. However, we still lack visibility into the Polar Bookshop system, especially when something goes wrong. Before going to production, we should ensure our applications are observable and that the deployment platform provides all the tools needed to monitor and gain insights into the system.
+Monitoring involves checking the telemetry available for the application and defining alerts for known failure states. Observability goes beyond that and aims at reaching a state where we can ask arbitrary questions about the system without
+447
+Licensed to Zhigang Li <lzg14@qq.com>
+
+448
+
+CHAPTER 13 Observability and monitoring
+
+knowing the question in advance. The product team should ensure their applications expose relevant information; and the platform team should provide an infrastructure for consuming that information and asking questions about their operations.
+As you'll remember from chapter 1, observability is one of the properties of cloud native applications. Observability is a measure of how well we can infer the internal state of an application from its outputs. In chapter 2, you learned about the 15-Factor methodology, which contains two factors that help build observable applications. Factor 14 suggests treating your applications as space probes and reasoning about what kind of telemetry you'd need to monitor and control your applications remotely, such as logs, metrics, and traces. Factor 6 recommends treating logs as a stream of events rather than dealing with log files.
+In this chapter, you'll learn how to ensure your Spring Boot applications expose relevant information to infer their internal states, such as logs, health probes, metrics, traces, and additional valuable data regarding schema migrations and builds. I'll also show you how to use the Grafana open source observability stack to validate the changes you'll make to your applications. However, I won't go into too many details, because that's something the platform team deploys and operates.
+
+NOTE The source code for the examples in this chapter is available in the Chapter13/13-begin and Chapter13/13-end folders, which contain the initial and final states of the project (https://github.com/ThomasVitale/cloud-native -spring-in-action).
+
+13.1
+
+Logging with Spring Boot, Loki, and Fluent Bit
+Logs (or event logs) are discrete records of something that happened over time in a software application. They are composed of a timestamp necessary to answer the question "when did the event happen?" and some information providing details about the event and its context, which lets us answer questions like "what happened at this time?", "which thread was processing the event?", or "which user/tenant was in the context?"
+During troubleshooting and debugging tasks, logs are among the essential tools we can use to reconstruct what happened at a specific point in time in a single application instance. They're usually categorized according to the type or severity of the event, such as trace, debug, info, warn, and error. It's a flexible mechanism that lets us log only the most severe events in production while still giving us the chance to change the log level temporarily during debugging.
+The format of a log record can vary, going from simple plain text to a more organized collection of key/value pairs to fully structured records produced in a JSON format.
+Traditionally we've configured logs to be printed out in files located on the host machine, which has resulted in applications dealing with filename conventions, file rotation, and file sizes. In the cloud we follow the 15-Factor methodology, which recommends treating logs as events streamed to the standard output. Cloud native applications stream logs and are not concerned with how they are processed or stored.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+13.1 Logging with Spring Boot, Loki, and Fluent Bit
+
+449
+
+This section will teach you how to add and configure logs in Spring Boot applications. Then I'll explain how logs are collected and aggregated in a cloud native infrastructure. Finally, you'll run Fluent Bit for log collection, run Loki for log aggregation, and use Grafana to query the logs produced by your Spring Boot applications.
+
+13.1.1 Logging with Spring Boot
+Spring Boot comes with built-in support and auto-configuration for the most common logging frameworks, including Logback, Log4J2, Commons Logging, and Java Util Logging. By default, Logback is used (https://logback.qos.ch), but you can easily replace it with another library thanks to the abstraction provided by the Simple Logging Facade for Java (SLF4J).
+Using the interfaces from SLF4J (www.slf4j.org), you have the freedom to change the logging library without changing your Java code. Furthermore, cloud native applications should treat logs as events and stream them to the standard output. That's precisely what Spring Boot does out of the box. Convenient, right?
+CONFIGURING LOGGING IN SPRING BOOT Event logs are categorized by level with decreasing details and increasing importance: trace, debug, info, warn, error. By default, Spring Boot logs everything from the info level up.
+A logger is a class that produces log events. You can set logger levels through configuration properties, with options to apply global configurations or to target specific packages or classes. For example, in chapter 9 we set a debug logger to get more details about the circuit breakers implemented with Resilience4J (in the application.yml file in the Edge Service project):
+
+logging: level: io.github.resilience4j: debug
+
+Sets a debug logger for the Resilience4J library
+
+You might need to configure multiple loggers at the same time. In that case, you can collect them in a log group and apply the configuration to the group directly. Spring Boot provides two predefined log groups, web and sql, but you can also define your own. For example, to better analyze the behavior of the circuit breakers defined in the Edge Service application, you could define a log group and configure a log level for both Resilience4J and Spring Cloud Circuit Breaker.
+In the Edge Service project (edge-service), you can configure the new log group in the application.yml file as follows.
+
+Listing 13.1 Configuring a group to control the circuit breaker logs
+
+logging:
+group: circuitbreaker: io.github.resilience4j,
+org.springframework.cloud.circuitbreaker
+
+Collects multiple loggers into a group to apply the same configuration
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+450
+
+CHAPTER 13 Observability and monitoring
+
+level: circuitbreaker: info
+
+Sets an "info" logger for both Resilience4J and Spring Cloud Circuit Breaker, which is easy to change if you need to debug the circuit breakers
+
+By default, each event log provides essential information, including the date and time of the occurrence, the log level, the process identifier (PID), the name of the thread from which the event was triggered, the logger name, and the log message. If you check the application logs from a Terminal that supports ANSI, the log messages will also be colored to improve readability (figure 13.1). The logging format can be customized using the logging.pattern configuration property group.
+
+Timestamp
+
+Default event log format in Spring Boot
+
+Process ID
+
+Logger name
+
+2022-07-31 21:07:03.394 INFO 3142 --- [main] c.p.c.CatalogServiceApplication : Starting CatalogServiceApplication
+
+Log level Thread name
+
+Log message
+
+Figure 13.1 Event logs include a timestamp, contextual information, and a message about what happened.
+
+NOTE Spring Boot provides extensive options for configuring logging to files. Since that's not useful for cloud native applications, I won't cover it in this book. If you're interested in the subject, see the official documentation to learn more about log files (http://spring.io/projects/spring-boot).
+ADDING LOGS TO SPRING BOOT APPLICATIONS Besides configuring loggers for the frameworks and libraries used in your project, you should define event logs in your code whenever applicable. How much logging is enough? It depends on the context. In general, I reckon that it's better to have too much logging than too little. I've seen many deployments that just contain changes to add more logging, while it's pretty rare to see the opposite.
+Thanks to the SLF4J façade, the syntax for defining new event logs in Java is the same no matter which logging library you use: a Logger instance created from a LoggerFactory. Let's see how it works by adding new log messages to the web controller in Catalog Service.
+In the Catalog Service project (catalog-service), go to the BookController class, define a Logger instance from SLF4J, and add messages to be printed out whenever a client calls the application's REST API.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+13.1 Logging with Spring Boot, Loki, and Fluent Bit
+
+451
+
+Listing 13.2 Defining log events using SL4FJ
+package com.polarbookshop.catalogservice.web;
+
+import org.slf4j.Logger; import org.slf4j.LoggerFactory; ...
+
+@RestController @RequestMapping("books") public class BookController {
+private static final Logger log = LoggerFactory.getLogger(BookController.class);
+private final BookService bookService;
+@GetMapping public Iterable<Book> get() {
+log.info( "Fetching the list of books in the catalog"
+); return bookService.viewBookList(); }
+
+Defines a logger for the BookController class
+Logs the given message at the "info" level
+
+... }
+
+NOTE Go ahead and define new loggers and log events for all the applications composing the Polar Bookshop system wherever it makes sense. As a reference, you can look at the source code repository accompanying this book (Chapter13/13-end).
+
+The Mapped Diagnostic Context (MDC)
+You'll likely need to add common information to your log messages, such as the identifier of the currently authenticated user, the tenant for the current context, or the request URI. You could directly add that information to your log message, as you did in the previous listing, and it would work, but the data would not be structured. Instead, I prefer working with structured data.
+SLF4J and common logging libraries, like Logback and Log4J2, support adding structured information depending on the request context (authentication, tenant, thread) through a tool named Mapped Diagnostic Context (MDC). If you'd like to know more about MDC, I recommend checking the official documentation for the specific logging library you're using.
+
+Now that our applications log messages as an event stream, we need to collect and store them in a central place that we can query. The following section will provide a solution to accomplish that.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+452
+
+CHAPTER 13 Observability and monitoring
+
+13.1.2 Managing logs with Loki, Fluent Bit, and Grafana
+When you move to distributed systems like microservices and complex environments like the cloud, managing logs becomes challenging and requires a different solution than in more traditional applications. If something goes wrong, where can we find data about the failure? Traditional applications would rely on log files stored on the host machine. Cloud native applications are deployed in dynamic environments, are replicated, and have different life spans. We need to collect the logs from all applications running in the environment and send them to a central component where they can be aggregated, stored, and searched.
+There are plenty of options for managing logs in the cloud. Cloud providers have their own offerings, like Azure Monitor Logs and Google Cloud Logging. There are also many enterprise solutions available on the market, such as Honeycomb, Humio, New Relic, Datadog, and Elastic.
+For Polar Bookshop, we'll use a solution based on the Grafana observability stack (https://grafana.com). It's composed of open source technologies, and you can run it yourself in any environment. It's also available as a managed service (Grafana Cloud) offered by Grafana Labs.
+The components of the Grafana stack we'll use for managing logs are Loki for log storage and search, Fluent Bit for log collection and aggregation, and Grafana for log data visualization and querying.
+NOTE Which technology you use for managing logs is a platform choice and shouldn't impact the applications at all. For example, you should be able to replace the Grafana stack with Humio without making any changes to the Polar Bookshop applications.
+We need a log collector to fetch log messages from the standard output of all the running applications. Using the Grafana stack, you're free to choose a log collector from among several options. For the Polar Bookshop system, we'll use Fluent Bit, an open source and CNCF-graduated project that "enables you to collect logs and metrics from multiple sources, enrich them with filters, and distribute them to any defined destination" (https://fluentbit.io). Fluent Bit is a subproject of Fluentd, "an open source data collector for unified logging layer" (www.fluentd.org).
+Fluent Bit will collect logs from all running containers and forward them to Loki, which will store them and make them searchable. Loki is "a log aggregation system designed to store and query logs from all your applications and infrastructure" (https:// grafana.com/oss/loki).
+Finally, Grafana will use Loki as a data source and provide log visualization features. Grafana "allows you to query, visualize, alert on and understand" your telemetry, no matter where it is stored (https://grafana.com/oss/grafana). Figure 13.2 illustrates this logging architecture.
+Let's start by running Grafana, Loki, and Fluent Bit as containers. In your Polar Deployment project (polar-deployment), update the Docker Compose configuration
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+13.1 Logging with Spring Boot, Loki, and Fluent Bit
+
+453
+
+Logging architecture using the Grafana stack
+
+Application [Container]
+Fetches logs from
+
+Grafana [Container] Platform for querying, visualizing, and alerting on metrics, logs, and traces
+Queries logs from
+
+Fluent Bit [Container]
+Collects, processes, and forwards logs
+
+Forwards logs to
+
+Loki [Container]
+Log aggregation system
+
+Figure 13.2 Logging architecture for cloud native applications based on the Grafana stack
+
+(docker/docker-compose.yml) to include the new services. They are configured through files I have included in the source code repository accompanying this book (Chapter13/13-end/polar-deployment/docker/observability). Copy the observability folder over the same path in your own project.
+
+Listing 13.3 Defining containers for Grafana, Loki, and Fluent Bit
+
+version: "3.8" services:
+...
+
+grafana:
+
+image: grafana/grafana:9.1.2
+
+container_name: grafana
+
+depends_on:
+
+- loki ports:
+- "3000:3000" environment:
+
+Username and password to access Grafana
+
+- GF_SECURITY_ADMIN_USER=user
+
+- GF_SECURITY_ADMIN_PASSWORD=password
+
+volumes:
+
+Volumes are used to load configuration for data sources and dashboards.
+
+- ./observability/grafana/datasource.yml:/etc/grafana/provisioning/
+datasources/datasource.yml
+
+- ./observability/grafana/dashboards:/etc/grafana/provisioning/
+dashboards
+
+- ./observability/grafana/grafana.ini:/etc/grafana/grafana.ini
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+
