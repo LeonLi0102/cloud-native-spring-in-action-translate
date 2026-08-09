@@ -1,0 +1,284 @@
+CHAPTER 2 Cloud native patterns and technologies
+
+Application codebase
+
+Built as
+
+Java application
+
+Packaged as
+
+Runs on
+
+Container image
+Runs on
+
+Included in
+
+Kubernetes pod
+Runs on
+
+Java runtime
+
+Container runtime
+
+Kubernetes cluster
+
+Figure 2.1 The journey of a Spring application from Java to container to Kubernetes
+
+go deeper into each of those topics, so don't worry if something is not entirely clear. This chapter aims to provide you with a mental map of the journey we'll undertake from code to production in a cloud environment, while familiarizing you with patterns and technologies that we'll use in the rest of the book.
+Finally, I'll introduce you to the cloud native project we'll build throughout this book using Spring and Kubernetes. We'll employ all the properties and patterns for cloud native applications introduced in this first part of the book.
+2.1 Cloud native development principles: 12 Factors and beyond
+The engineers working at the Heroku cloud platform have proposed the 12-Factor methodology as a collection of development principles for designing and building cloud native applications.1 They have distilled their experience into best practices for building web applications with the following characteristics:
+ Suitable to be deployed on cloud platforms  Scalable by design  Portable across systems  Enablers of continuous deployment and agility
+The goal was to help developers build applications for the cloud, highlighting the significant factors that should be considered to achieve the best results.
+Later, the methodology was revised and expanded by Kevin Hoffman in his book Beyond the Twelve-Factor App, refreshing the contents of the original factors and adding three extra ones.2 From now on, I will refer to this expanded set of principles as the 15-Factor methodology.
+
+1 A. Wiggins, "The Twelve-Factor App," https://12factor.net. 2 K. Hoffman, Beyond the Twelve-Factor App (O'Reilly, 2016).
+Licensed to Zhigang Li <lzg14@qq.com>
+
+2.1 Cloud native development principles: 12 Factors and beyond
+
+37
+
+These 15 factors will guide you throughout the book since they are a good starting point for developing cloud native applications. If you are building a new application from scratch or migrating a traditional system to the cloud, these principles can help you on your journey. I will elaborate more on them when relevant, and I'll illustrate how to apply them to Spring applications. It's essential that you become familiar with them.
+Let's dig into each of these factors.
+
+2.1.1
+
+One codebase, one application
+The 15-Factor methodology establishes a one-to-one mapping between an application and its codebase, so there's one codebase for each application. Any shared code should be tracked in its own codebase as a library that can be included as a dependency or service that can be run in standalone mode, acting as a backing service for other applications. Each codebase can optionally be tracked in its own repository.
+A deployment is a running instance of the application. Many deployments are possible in different environments, all sharing the same application artifact. There is no need to rebuild the codebase to deploy an application to a specific environment: any aspect that changes between deployments (such as configuration) should be outside the application codebase.
+
+2.1.2
+
+API first
+A cloud native system is usually made up of different services that communicate through APIs. Using an API first approach while designing a cloud native application encourages you to think about fitting it into a distributed system and favors the distribution of the work across different teams. By designing the API first, another team using that application as a backing service could create their solution against that API. By designing the contract up front, integration with other systems will be more robust and testable as part of the deployment pipeline. Internally, the API implementation can be changed without affecting other applications (and teams) depending on it.
+
+2.1.3
+
+Dependency management
+All application dependencies should be declared explicitly in a manifest and be available for the dependency manager to download from a central repository. In the context of Java applications, we are usually well-equipped to follow this principle using tools like Maven or Gradle. The only implicit dependencies an application can have on the surrounding environment are the language runtime and the dependency manager tool. This means that private dependencies should be resolved via the dependency manager.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+38
+
+CHAPTER 2 Cloud native patterns and technologies
+
+2.1.4
+
+Design, build, release, run
+A codebase goes through different stages in its journey from design to deployment in production:
+ Design stage--Technologies, dependencies, and tools needed by a specific application feature are decided.
+ Build stage--The codebase is compiled and packaged together with its dependencies as an immutable artifact called a build. The build artifact must be uniquely identified.
+ Release stage--The build is combined with a specific configuration for the deployment. Each release is immutable and should be uniquely identifiable, such as by using semantic versioning (for example, 3.9.4) or a timestamp (for example, 2022-07-07_17:21). Releases should be stored in a central repository for easy access, like when a rollback to a previous version is required.
+ Run stage--The application runs in the execution environment from a specific release.
+The 15-Factor methodology requires a strict separation of these stages and doesn't allow changes to the code at runtime, since that would result in a mismatch with the build stage. The build and the release artifacts should be immutable and labeled with a unique identifier to guarantee reproducibility.
+
+2.1.5
+
+Configuration, credentials, and code
+The 15-Factor methodology defines configuration as everything likely to change between deployments. Whenever you need to change the configuration for an application, you should be able to do so without any changes in the code, and without building the application again.
+The configuration might include resource handles to backing services like a database or a messaging system, credentials to access third-party APIs, and feature flags. Ask yourself if any credential or environment-specific information would be compromised should your codebase suddenly become public. That will tell you whether you have correctly externalized the configuration.
+To be compliant with this factor, the configuration can't be included in the code or tracked in the same codebase. The only exception is the default configuration, which can be packaged with the application codebase. You can still use configuration files for any other type of configuration, but you should store them in a separate repository.
+The methodology recommends storing configuration as environment variables. By doing so, you can have the same application deployed in different environments but with different behaviors depending on the environment's configuration.
+
+2.1.6
+
+Logs
+A cloud native application isn't concerned with routing and storage of logs. Applications should log to the standard output, treating logs as events emitted in a sequence
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+2.1 Cloud native development principles: 12 Factors and beyond
+
+39
+
+ordered by time. Log storage and rotation are not application responsibilities anymore. An external tool (a log aggregator) will fetch, collect, and make logs available for inspection.
+
+2.1.7
+
+Disposability
+In a traditional environment, you would take much care of your applications, ensuring they stay up and running and never terminate. In a cloud environment, you don't need to care that much: applications are ephemeral. If a failure happens and the application doesn't respond anymore, you terminate it and start a new instance. If you have a high-load peak, you can spin up more instances of your applications to sustain the increased workload. We say that an application is disposable if it can be started or stopped at any time.
+To handle application instances in such a dynamic way, you should design them to start up quickly whenever you need a new instance and gracefully shut down when you don't need them anymore. A fast startup enables the elasticity of the system, ensuring robustness and resilience. Without a fast startup, you will have performance and availability issues.
+A graceful shutdown is when an application, on receiving a signal to terminate, stops accepting new requests, completes the ones already in progress, and finally exits. In the case of web processes, that is straightforward. In other cases, such as with worker processes, the jobs they were responsible for must be returned to the work queue, and only afterward can they exit.
+
+2.1.8
+
+Backing services
+Backing services can be defined as external resources that an application uses to deliver its functionality. Examples of backing services are databases, message brokers, caching systems, SMTP servers, FTP servers, or RESTful web services. Treating them as attached resources means that you can easily change them without modifying the application code.
+Consider how you use databases throughout the software development life cycle. Chances are that you'll use a different database depending on the stage: development, testing, or production. If you treat the database as an attached resource, you can use a different service depending on the environment. The attachment is done through resource binding. For example, resource binding for a database could consist of a URL, a username, and a password.
+
+2.1.9
+
+Environment parity
+Environment parity is about keeping all your environments as similar as possible. In reality, there are three gaps that this factor tries to address:
+ Time gap --The period between a code change and its deployment can be quite large. The methodology strives to promote automation and continuous
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+40
+
+CHAPTER 2 Cloud native patterns and technologies
+
+deployment to reduce the period between when a developer writes code to when it's deployed in production.  People gap--Developers build applications, and operators manage their deployment in production. This gap can be resolved by embracing a DevOps culture, improving collaboration between developers and operators, and embracing the "you build it, you run it" philosophy.  Tools gap--One of the main differences between environments is how backing services are handled. For example, developers might use the H2 database in their local environment but PostgreSQL in production. In general, the same type and version of backing services should be used in all environments.
+2.1.10 Administrative processes
+Some management tasks are usually needed to support applications. Tasks like database migrations, batch jobs, or maintenance jobs should be treated as one-off processes. Just like application processes, the code for administrative tasks should be tracked in revision control, delivered with the application they support, and executed in the same environment as the application.
+It's usually a good idea to frame administrative tasks as small standalone services that run once and then are thrown away or as functions configured in a stateless platform to be triggered when certain events happen, or you can embed them in the application itself, activating them by calling a specific endpoint.
+2.1.11 Port binding
+Applications following the 15-Factor methodology should be self-contained and export their services via port binding. In production, there might be some routing services that translate requests from public endpoints to the internal port-bound services.
+An application is self-contained if it doesn't depend on an external server in the execution environment. A Java web application would probably run inside a server container like Tomcat, Jetty, or Undertow. A cloud native application, in contrast, would not require the environment to have a Tomcat server available; it would manage it itself as any other dependency. Spring Boot, for example, lets you use an embedded server: the application will contain the server rather than depending on one being available in the execution environment. One of the consequences of this approach is that there is always a one-to-one mapping between application and server, unlike the traditional method where multiple applications are deployed to the same server.
+The services provided by the application are then exported via port binding. A web application would bind HTTP services to a specific port and potentially become a backing service for another application. That's what usually happens in a cloud native system.
+
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+2.1 Cloud native development principles: 12 Factors and beyond
+
+41
+
+2.1.12 Stateless processes
+In the previous chapter, you saw that high scalability is one reason why we move to the cloud. To ensure scalability, we design applications as stateless processes and adopt a share-nothing architecture: no state should be shared among different application instances. Ask yourself if any data would be lost should an instance of your application be destroyed and recreated. If the answer is affirmative, then your application is not stateless.
+No matter what, we will always need to save some state, or our applications will be useless in most cases. As a result, we design applications to be stateless and then only handle the state in specific stateful services like data stores. In other words, a stateless application delegates the state management and storage to a backing service.
+2.1.13 Concurrency
+Creating stateless applications is not enough to ensure scalability. If you need to scale, that means you need to serve more users. Therefore, your applications should allow concurrent processing to serve many users at the same time.
+The 15-Factor methodology defines processes as first-class citizens. Those processes should be horizontally scalable, distributing the workload across many processes on different machines, and this concurrent processing is only possible if the applications are stateless. In JVM applications, we handle concurrency through multiple threads, available from thread pools.
+Processes can be classified according to their types. For example, you might have web processes that handle HTTP requests and worker processes that execute scheduled jobs in the background.
+2.1.14 Telemetry
+Observability is one of the properties of cloud native applications. Managing a distributed system in the cloud is complex, and the only way to manage such complexity is by ensuring that every system component provides the correct data to monitor the system's behavior remotely. Examples of telemetry data are logs, metrics, traces, health status, and events. Hoffman uses a very catchy image to stress the importance of telemetry: treat your applications like space probes. What kind of telemetry would you need to monitor and control your applications remotely?
+2.1.15 Authentication and authorization
+Security is one of the essential qualities of a software system, but it often doesn't get the necessary attention. Following a zero-trust approach, we must secure any interaction within the system at any architectural and infrastructural levels. There is undoubtedly more to security than just authentication and authorization, but those are a good starting point.
+With authentication, we can keep track of who is using the application. Knowing that, we can then check the user permissions to verify whether the user is allowed to
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+42
+
+CHAPTER 2 Cloud native patterns and technologies
+
+perform specific actions. A few standards are available for implementing identity and access management, including OAuth 2.1 and OpenID Connect, which we will use in this book.
+
+2.2 Building cloud native applications with Spring
+It's time to get more concrete now and start talking about technologies. So far, you have learned about the cloud native approach and the main development practices we'll follow. Now let's have a look at Spring. If you are reading this book, you have probably had some previous experience with Spring, and you'd like to learn how to use it to build cloud native applications.
+The Spring ecosystem provides features for handling almost any requirement your applications might have, including those of cloud native applications. Spring is by far the most used Java framework. It's been around for many years, and it's robust and reliable. The community behind Spring is fantastic and willing to move it forward and make it consistently better. Technologies and development practices evolve continuously, and Spring is very good at keeping up with them. Therefore, using Spring for your next cloud native project is an excellent choice.
+This section will highlight some interesting features of the Spring landscape. Then we will start to create a Spring Boot application.
+
+2.2.1
+
+Overview of the Spring landscape
+Spring comprises several projects that address many different aspects of software development: web applications, security, data access, integration, batch processing, configuration, messaging, big data, and many more. The beauty of the Spring platform is that it's designed to be modular, so you can use and combine just the projects you need. It doesn't matter which type of application you need to build. Chances are that Spring can help you with it.
+Spring Framework is the core of the Spring platform, the project that started it all. It supports dependency injection, transaction management, data access, messaging, web applications, and more. The framework establishes the "plumbing" of enterprise applications so you can focus on the business logic.
+Spring Framework provides an execution context (called Spring context or container), where beans, properties, and resources are managed throughout the entire application life cycle. I'll assume you are already familiar with the framework's core features, so I will not spend too much time on it. In particular, you should be aware of the Spring context's role and be comfortable working with Spring beans, annotationbased configuration, and dependency injection. We will rely on those features, so you should have them sorted out.
+Based on the framework, Spring Boot makes it possible to build standalone, production-ready applications quickly. Spring Boot takes an opinionated view of Spring and third-party libraries, and it comes bundled with a sensible default configuration that lets
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+2.2 Building cloud native applications with Spring
+
+43
+
+developers get started with minimal up-front work while still providing full customization possibilities.
+Throughout this book, you'll have a chance to use several Spring projects to implement patterns and best practices for cloud native applications, including Spring Boot, Spring Cloud, Spring Data, Spring Security, Spring Session, and Spring Native.
+
+NOTE If you are interested in learning more about the core Spring features, you can find a few books on the subject in the Manning catalog, including
+Spring Start Here by Laurent¸iu Spilca (Manning, 2021) and Spring in Action,
+sixth edition, by Craig Walls (Manning, 2022). You can also refer to Spring Boot: Up & Running by Mark Heckler (O'Reilly, 2021).
+
+2.2.2
+
+Building a Spring Boot application
+Imagine that you have been hired to build a Polar Bookshop application for Polarsophia. This organization manages a specialized bookshop and wants to sell its books about the North Pole and the Arctic online. A cloud native approach is being considered.
+As a pilot project, your boss has assigned you to demonstrate to your colleagues how to go from implementation to production in the cloud. The web application you are asked to build is Catalog Service, and for now it will only have one responsibility: welcoming users to the book catalog. This pilot project will be the foundation for actual products built as cloud native applications, should it be successful and wellreceived.
+Considering the task's goal, you might decide to implement the application as a RESTful service with a single HTTP endpoint responsible for returning a welcome message. Surprisingly enough, you choose to adopt Spring as the primary technology stack for the one service (Catalog Service) composing the application. The architecture of the system is shown in figure 2.2, and you'll be trying your hand at building and deploying the application in the upcoming sections.
+
+User [Person]
+A user of the Polar Bookshop application
+
+Uses [REST/HTTP]
+
+Catalog Service [Container: Spring Boot] Provides functionality for managing the books in the catalog
+Polar Bookshop [Software System]
+
+Figure 2.2 Architecture diagram for the Polar Bookshop application, following the C4 model
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+44
+
+CHAPTER 2 Cloud native patterns and technologies
+
+In figure 2.2, you can see the notation that I'll use to represent architectural diagrams throughout the book, following the C4 model created by Simon Brown (https:// c4model.com). To describe the architecture for the Polar Bookshop project, I'm relying on three abstractions from the model:
+ Person--This represents one of the human users of the software system. In our example, it's a customer of the bookshop.
+ System--This represents the overall application you will build to deliver value to its users. In our example, it's the Polar Bookshop system.
+ Container--This represents a service, either application or data. It's not to be confused with Docker. In our example, it's the Catalog Service.
+For this task we'll use the Spring Framework and Spring Boot to do the following:
+ Declare the dependencies needed to implement the application.  Bootstrap the application with Spring Boot.  Implement a controller to expose an HTTP endpoint for returning a welcome
+message.  Run and try the application.
+All the examples in this book are based on Java 17, the latest long-term release of Java at the time of writing. Before moving on, follow the instructions in section A.1 of appendix A to install an OpenJDK 17 distribution. Then ensure you have an IDE with support for Java, Gradle, and Spring. I'll be using IntelliJ IDEA, but feel free to choose another one, such as Visual Studio Code. Finally, create a free account on GitHub if you don't have one yet (https://github.com). You'll use it to store your code and define continuous delivery pipelines.
+INITIALIZING THE PROJECT Throughout the book, we'll build several cloud native applications. I recommend you define a Git repository for each of them and use GitHub to store them. In the next chapter, I'll talk more about managing codebases. For now, go ahead and create a catalog-service Git repository.
+Next, you can generate the project from Spring Initializr (https://start.spring.io) and store it in the catalog-service Git repository you just created. Spring Initializr is a convenient service you can use from a browser or through its REST API to generate JVM-based projects. It's even integrated into popular IDEs such as IntelliJ IDEA and Visual Studio Code. The initialization parameters for Catalog Service are shown in figure 2.3.
+During the initialization, you can provide a few details about the application you want to build, as shown in table 2.1.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+2.2 Building cloud native applications with Spring
+
+45
+
+Figure 2.3 The parameters for initializing the Catalog Service project from Spring Initializr
+
+Table 2.1 The main parameters you can configure to generate a project from Spring Initializr
+
+Parameter
+
+Description
+
+Value for Catalog Service
+
+Project
+
+You can decide whether you want to use Gradle or Maven as the build tool for your project. All the examples in this book will use Gradle.
+
+Gradle
+
+Language
+
+Spring supports the three main JVM languages: Java, Kotlin, Java and Groovy. All the examples in this book will use Java.
+
+Spring Boot
+
+You can choose which version of Spring Boot you want to use. All the examples in this book will use Spring Boot 2.7.3, but any subsequent patch should be fine.
+
+Spring Boot 2.7.3
+
+Group
+
+The group ID for the project, as used in a Maven repository. com.polarbookshop
+
+Artifact
+
+The artifact ID for the project, as used in a Maven repository. catalog-service
+
+Name
+
+The project name.
+
+catalog-service
+
+Package name The base Java package for the project.
+
+com.polarbookshop .catalogservice
+
+Packaging
+
+How to package the project: WAR (for deployment on appli- JAR cation servers) or JAR (for standalone applications). Cloud native applications should be packaged as JARs, so all the examples in this book will use that option.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+46
+
+CHAPTER 2 Cloud native patterns and technologies
+
+Table 2.1 The main parameters you can configure to generate a project from Spring Initializr (continued)
+

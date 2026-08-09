@@ -1,0 +1,442 @@
+Introduction to cloud native
+This chapter covers
+ What the cloud and cloud computing model are  The definition of cloud native  Characteristics of cloud native applications  Culture and practices supporting cloud native  When and why you might consider the cloud
+native approach  Topologies and architectures for cloud native
+applications
+Cloud native applications are highly distributed systems that live in the cloud and are resilient to change. Systems are made up of several services that communicate through a network and are deployed in a dynamic environment where everything keeps changing.
+Before diving into the technologies, it's fundamental to define what cloud native is. Like other buzzwords in our field (such as agile, DevOps, or microservices), cloud native is sometimes misunderstood and can be a source of confusion because it means different things to different people.
+In this chapter, I'll provide you with the conceptual tools you'll need for the rest of the book. I'll start by defining what cloud native means and what it takes for an
+3
+Licensed to Zhigang Li <lzg14@qq.com>
+
+4
+
+CHAPTER 1 Introduction to cloud native
+
+application to be identified as such. I'll explain the properties of cloud native applications, examine the characteristics of the cloud computing model, and discuss when and why you might want to move to the cloud. I'll also present some fundamental concepts of cloud native topologies and architectures. Figure 1.1 shows an overview of the different elements I'll cover in this chapter as I define and qualify cloud native systems. At the end of this chapter, you'll be ready to start your journey building cloud native applications with Spring and deploying them to Kubernetes.
+
+The cloud
+Cloud infrastructures IT infrastructure supporting
+cloud computing
+Cloud computing On-demand network access
+to computing resources
+Cloud services IaaS, CaaS, PaaS, FaaS,
+SaaS
+
+What defines cloud native?
+
+Application properties
+
+Scalability Dynamically support increasing or decreasing
+workloads
+
+Loose coupling Components have minimal knowledge of each other
+
+Resilience Maintain level of service
+in face of adversity
+
+Manageability Level of control from the outside: update, configure,
+deploy
+
+Observability Knowledge about the internal state inferred
+from the outside
+
+Practices
+Automation Reproducible, efficient,
+and reliable systems
+Continuous delivery Better and faster software deliveries
+DevOps Culture of collaboration between different roles
+
+Topologies
+Containers Lightweight and isolated
+computing contexts
+Orchestration Container scheduling, cluster management
+Serverless Servers and backing services managed by the
+cloud platform
+
+Goals
+
+Speed Faster and flexible delivery
+
+Resilience Availability and stability
+
+Scale Elasticity and dynamic
+scaling
+
+Cost Efficiency and cost optimization
+
+Architectures
+Application services Loosely coupled, stateless, independently deployable
+units
+Data services Databases, messaging
+systems, and other stateful components
+Interactions Communication between services, such as HTTP, RSocket, gRPC, messaging
+
+Figure 1.1 Cloud native is an approach to application development aiming at leveraging cloud technologies.
+
+1.1 What is cloud native?
+On May 25, 2010, Paul Fremantle, a veteran of the cloud industry, wrote a post on his blog titled "Cloud Native."1 He was among the first to use the term cloud native. At a
+
+1 P. Fremantle, "Cloud Native," Paul Fremantle's Blog, May 28, 2010, http://mng.bz/Vy1G.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.1 What is cloud native?
+
+5
+
+time when concepts and technologies like microservices, Docker, DevOps, Kubernetes, and Spring Boot didn't yet exist, Fremantle discussed what it takes for "applications and middleware to work well in a cloud environment"--to be cloud native--with his team at WSO2.
+The key concept explained by Fremantle is that cloud native applications should be specifically designed for the cloud and have properties that take advantage of the cloud environment and the cloud computing model. You can move a traditional application (designed to run on the ground) to the cloud, an approach commonly referred to as "lift and shift," but that doesn't make the application native to the cloud. Let's see what does.
+
+1.1.1
+
+The Three Ps of Cloud Native
+What does it mean for applications to be designed specifically for the cloud? The Cloud Native Computing Foundation (CNCF) answers that question in its cloud native definition:2
+
+Cloud native technologies empower organizations to build and run scalable applications in modern, dynamic environments such as public, private, and hybrid clouds. Containers, service meshes, microservices, immutable infrastructure, and declarative APIs exemplify this approach.
+These techniques enable loosely coupled systems that are resilient, manageable, and observable. Combined with robust automation, they allow engineers to make high-impact changes frequently and predictably with minimal toil.
+From this definition, I identify three points that I like to call The Three Ps of Cloud Native:
+ Platforms--Cloud native applications run on platforms based on dynamic, distributed environments: the clouds (public, private, or hybrid).
+ Properties--Cloud native applications are designed to be scalable, loosely coupled, resilient, manageable, and observable.
+ Practices--Practices around cloud native applications--automation, continuous delivery, and DevOps--include robust automation combined with frequent and predictable changes.
+
+What is the Cloud Native Computing Foundation?
+The Cloud Native Computing Foundation (CNCF) is part of the Linux Foundation, and it "builds sustainable ecosystems and fosters communities to support the growth
+
+2 Cloud Native Computing Foundation, "CNCF Cloud Native Definition v1.0," http://mng.bz/de1w. Licensed to Zhigang Li <lzg14@qq.com>
+
+6
+
+CHAPTER 1 Introduction to cloud native
+
+(continued) and health of cloud native open-source software." The CNCF hosts many cloud native technologies and projects to enable cloud portability without vendor lock-in. If you want to discover the many projects addressing any cloud native aspect, I recommend checking out the CNCF Cloud Native Interactive Landscape.a
+a Cloud Native Computing Foundation, "CNCF Cloud Native Interactive Landscape," https://landscape.cncf.io/.
+In the following sections I'll examine those concepts further. However, I'd first like you to notice how the definition of cloud native is not tied to any specific implementation detail or technology. The CNCF mentions some in its definition, like containers and microservices, but they are just examples. One of the common misconceptions when starting a migration to the cloud is that you have to adopt a microservices architecture, build containers, and deploy them to Kubernetes. That is not true. Fremantle's post in 2010 is proof of that. He didn't mention any of those because they didn't exist. Yet, the applications he described not only are still considered cloud native, but they also comply with the definition given by the CNCF eight years later.
+1.2 The cloud and the cloud computing model
+Before focusing on the main characters, the cloud native applications, I'd like to set the scene by describing the context in which cloud native applications run: the cloud (figure 1.2). In this section, I'll define the cloud and its main characteristics. After all, if cloud native applications are designed to work well in a cloud environment, we should know what kind of environment that is.
+
+The cloud
+Cloud infrastructures IT infrastructure supporting
+cloud computing
+Cloud computing On-demand network access
+to computing resources
+Cloud services IaaS, CaaS, PaaS, FaaS,
+SaaS
+
+Figure 1.2 The cloud is an IT infrastructure characterized by different computing models and offered as a service by providers according to the degree of control consumers need.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.2 The cloud and the cloud computing model
+
+7
+
+The cloud is an IT infrastructure that supports the delivery of computing resources to consumers according to the cloud computing model. The National Institute of Standards and Technology (NIST) defines cloud computing as follows:3
+Cloud computing is a model for enabling ubiquitous, convenient, on-demand network access to a shared pool of configurable computing resources (e.g., networks, servers, storage, applications, and services) that can be rapidly provisioned and released with minimal management effort or service provider interaction.
+Just like you get electricity from a provider rather than generating it on your own, with the cloud you can get computing resources (such as servers, storage, and networks) as a commodity.
+The cloud provider manages the underlying cloud infrastructure, so the consumer doesn't need to worry about physical resources like machines or networks. Companies moving to the cloud can get all the computing resources they need via a network (usually the internet) through a set of APIs that allows them to provision and scale resources as they need on an on-demand, self-service basis.
+Elasticity is one of the main characteristics of this model: computing resources can be provisioned and released dynamically, depending on the demand.
+Elasticity is the degree to which a system is able to adapt to workload changes by provisioning and de-provisioning resources in an autonomic manner, such that at each point in time the available resources match the current demand as closely as possible.4
+Traditional IT infrastructures weren't able to provide elasticity. Companies had to calculate the maximum computing capabilities needed and set up an infrastructure that would support that, even if most of it was only required sometimes. With the cloud computing model, the usage of computing resources is monitored, and consumers only pay for what they actually use.
+There is no strict requirement about where the cloud infrastructure should be or who should manage it. There are several deployment models for delivering cloud services. The main ones are private cloud, public cloud, and hybrid cloud.
+ Private cloud--Cloud infrastructure provisioned to be used by a single organization. It can be managed by the organization itself or by a third party, and it can be hosted on premises or externally. A private cloud is usually the preferred option for organizations dealing with sensitive data or highly critical systems. It is also a common choice for having complete control over the infrastructure's compliance with specific laws and requirements like the General Data Protection Regulation (GDPR) or the California Consumer Privacy Act (CCPA). For
+
+3 NIST, "The NIST Definition of Cloud Computing," SP 800-145, September 2011, http://mng.bz/rnWy. 4 N.R. Herbst, S. Kounev, and R. Reussner, "Elasticity in Cloud Computing: What it is, and What it is Not," in
+Proceedings of the 10th International Conference on Autonomic Computing (ICAC 2013), http://mng.bz/BZm2.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+8
+
+CHAPTER 1 Introduction to cloud native
+
+example, banks and healthcare providers are likely to set up their own cloud infrastructure.  Public cloud--Cloud infrastructure provisioned for public use. It is usually owned and managed by an organization, the cloud provider, and is hosted on the provider's premises. Examples of public cloud service providers are Amazon Web Services (AWS), Microsoft Azure, Google Cloud, Alibaba Cloud, and DigitalOcean.  Hybrid cloud--Composition of two or more distinct cloud infrastructures belonging to any of the previous types, bound together and offering services as if they were one single environment.
+Figure 1.3 describes the five leading cloud computing service models, what is provided by the platform in each model, and which abstractions are provided to the consumer. For example, with the Infrastructure as a Service (IaaS) model, the platform provides and manages computing, storage, and networking resources, whereas the consumer provisions and manages virtual machines. The decision about which service model to choose should be driven by the degree of control the consumer needs over the infrastructure and which type of computing resources they need to manage.
+
+Cloud computing service models
+
+Infrastructure platform
+
+Container platform
+
+Application platform
+
+Serverless platform
+
+Software platform
+
+IaaS
+
+CaaS
+
+PaaS
+
+FaaS
+
+SaaS
+
+Platform: provides computing, storage, and networking resources
+
+Platform: provides container engine, orchestrator, and underlying infrastructure
+
+Platform: provides development and deployment tools, APIs, and underlying infrastructure
+
+Platform: provides the runtime, the whole infrastructure needed to run functions, and autoscaling
+
+Platform: provides both the software and the whole infrastructure needed to run it
+
+Consumer: provisions, configures, and manages servers, network, and storage
+
+Consumer: builds, deploys, and manages containerized workloads and clusters
+
+Consumer: builds, deploys, and manages applications
+
+Consumer: builds and Consumer: consumes
+
+deploys functions
+
+a service via a network
+
+Figure 1.3 The cloud computing service models differ by the level of abstraction they provide and who is responsible for managing which levels (the platform or the consumer).
+
+1.2.1
+
+Infrastructure as a Service (IaaS)
+In the Infrastructure as a Service (IaaS) model, consumers can directly control and provision resources like servers, storage, and networks. For example, they can provision virtual machines and install software like operating systems and libraries. Even though this model has been used for a while, it was in 2006 that Amazon made it popular and widely accessible with Amazon Web Services (AWS). Examples of IaaS offerings are AWS Elastic Compute Cloud (EC2), Azure Virtual Machines, Google Compute Engine, Alibaba Virtual Machines, and DigitalOcean Droplets.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.2 The cloud and the cloud computing model
+
+9
+
+1.2.2
+
+Container as a Service (CaaS)
+Using the Container as a Service (CaaS) model, consumers cannot control primitive virtualization resources. Instead, they provision and manage containers. The cloud provider takes care of provisioning the underlying resources that fulfill the needs of those containers, such as by starting new virtual machines and configuring networks to make them accessible through the internet. Docker Swarm, Apache Mesos, and Kubernetes are examples of tools used to build container platforms. All major cloud providers offer a managed Kubernetes service, which has become the de facto technology for CaaS offerings: Amazon Elastic Kubernetes Service (EKS), Azure Kubernetes Service (AKS), Google Kubernetes Engine (GKE), Alibaba Container Service for Kubernetes (ACK), and DigitalOcean Kubernetes.
+
+1.2.3
+
+Platform as a Service (PaaS)
+In the Platform as a Service (PaaS) model, the platform provides infrastructure, tools, and APIs that developers can use to build and deploy applications. For example, as a developer, you can build a Java application, package it as a Java Archive (JAR) file, and then deploy it to a platform working according to the PaaS model. The platform provides the Java runtime and other required middleware, and it can also offer extra services like databases or messaging systems. Examples of PaaS offerings are Cloud Foundry, Heroku, AWS Elastic Beanstalk, Azure App Service, Google App Engine, Alibaba Web App Service, and DigitalOcean App Platform. In the past few years, vendors have been converging on Kubernetes for building a new PaaS experience for developers and operators. Examples of this new generation of services are VMware Tanzu Application Platform and RedHat OpenShift.
+
+1.2.4
+
+Function as a Service (FaaS)
+The Function as a Service (FaaS) model relies on serverless computing to let consumers focus on implementing the business logic of their applications (often in the form of functions), whereas the platform takes care of providing servers and the rest of the infrastructure. Serverless applications are triggered by events, such as HTTP requests or messages. For example, you might code a function that analyzes a data set whenever available from a message queue and computes results according to some algorithms. Examples of commercial FaaS offerings are Amazon AWS Lambda, Microsoft Azure Functions, Google Cloud Functions, and Alibaba Functions Compute. Examples of open source FaaS offerings are Knative and Apache OpenWhisk.
+
+1.2.5
+
+Software as a Service (SaaS)
+The service with the highest abstraction is Software as a Service (SaaS). In this model, consumers access applications as users, while the cloud provider manages the whole stack of software and infrastructure. Many companies build their applications, use a CaaS or PaaS model to run them, and then sell their usage to the end customers as SaaS. The consumers of SaaS applications typically use thin clients like web browsers
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+10
+
+CHAPTER 1 Introduction to cloud native
+
+or mobile devices to access them. Examples of applications available as SaaS are Proton Mail, GitHub, Plausible Analytics, and Microsoft Office 365.
+
+Platform vs. PaaS
+Platform vs. PaaS
+Platform is a term that might generate some confusion in a cloud native discussion, so let's clarify. In general, a platform is an operating environment you use to run and manage your applications. Google Kubernetes Engine (GKE) is a platform that offers cloud services according to the CaaS model. Microsoft Azure Functions is a platform that provides cloud services following the FaaS model. At a lower level, if you deploy your applications directly on an Ubuntu machine, that will be your platform. In the rest of the book, whenever I use the term platform, I mean the broader concept just explained, unless specified otherwise.
+
+1.3 Properties of cloud native applications
+The scene is set: you are in the cloud. How should you design applications to take advantage of its characteristics?
+The CNCF identifies five main properties that cloud native applications should have: scalability, loose coupling, resilience, observability, and manageability. Cloud native is a methodology for building and running applications that exhibit those properties. Cornelia Davis sums it up by stating that "cloud-native software is defined by how you compute, not about where you compute."5 In other words, the cloud is about where, and cloud native is about how.
+I have already covered the where part: the cloud. Let's go ahead and explore the how. For a quick reference, figure 1.4 lists the properties with short descriptions.
+
+Application properties
+
+Scalability Dynamically support increasing
+or decreasing workloads
+
+Loose coupling Components have minimal knowledge of each other
+
+Resilience Maintain level of service
+in face of adversity
+
+Manageability Level of control from the outside: update, configure,
+deploy
+
+Observability Knowledge about the internal state inferred from the outside
+
+Figure 1.4 The main properties of cloud native applications
+
+5 C. Davis, "Realizing Software Reliability in the Face of Infrastructure Instability," in IEEE Cloud Computing 4, 5, pp. 34-40, September/October 2017.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.3 Properties of cloud native applications
+
+11
+
+1.3.1
+
+Scalability
+Cloud native applications are designed to scale, meaning that they can support increasing workloads if provided with additional resources. Depending on the nature of those extra resources, we can distinguish between vertical scalability and horizontal scalability:
+ Vertical scalability--Scaling vertically, or scaling up or down, means adding hardware resources to or removing them from the computing node, such as CPU or memory. This approach is limited, since it's not possible to keep adding hardware resources. On the other hand, applications don't need to be explicitly designed to be scaled up or down.
+ Horizontal scalability--Scaling horizontally, or scaling out or in, means adding more computing nodes or containers to, or removing them from, the system. This approach doesn't have the same limits as vertical scalability, but it requires applications to be scalable.
+Traditional systems would usually adopt vertical scalability in the event of increasing workloads. Adding CPU and memory was a common approach to enable an application to support more users without redesigning it for scalability. This is still a good option in specific scenarios, but we need something else for the cloud.
+In the cloud, where everything is dynamic and in constant change, horizontal scalability is preferred. Thanks to the abstraction levels offered by the cloud computing models, it's straightforward to spin up new instances of your application rather than increasing the computational power of the machines already running. Since the cloud is elastic, we can scale application instances in and out quickly and dynamically. I discussed elasticity as one of the main characteristics of the cloud: computing resources can be provisioned and released proactively, depending on the demand. Scalability is a prerequisite for elasticity.
+Figure 1.5 shows the difference between vertical and horizontal scalability. In the first case, we scale by adding more resources to the existing virtual machine. In the second case, we add another virtual machine to help the existing one process the extra workload.
+
+Vertical scalability
+
+Horizontal scalability
+
+VM
+
+VM 2 GB 2 CPU
+Before
+
+4 GB 4 CPU After
+
+VM 2 GB 2 CPU
+Before
+
+VM 2 GB 2 CPU
+
+VM 2 GB 2 CPU
+
+After
+
+Figure 1.5 When you need to support increasing workloads, the vertical scalability model will add hardware resources to the computing node, while the horizontal scalability model will add more computing nodes.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+12
+
+CHAPTER 1 Introduction to cloud native
+
+As you'll see when we discuss Kubernetes, the platform (whether CaaS, PaaS, or something else) takes care of scaling applications in and out dynamically. As developers, it's our responsibility to design applications that can be scaled. The big obstacle to scalability is application state, which essentially is a matter of whether an application is stateful or stateless. Throughout the book, I'll cover techniques for building stateless applications and enabling them to scale without issues. Among other things, I'll show you how to push the application state from Spring to data stores like PostgreSQL and Redis.
+
+1.3.2
+
+Loose coupling
+Loose coupling is an essential property of a system where parts have as little knowledge of each other as possible. The goal is to evolve each piece independently so that when one is changed, the others don't need to change accordingly.
+Coupling, and its twin concept cohesion, have played an essential role in software engineering for decades. It's a good design practice to decompose a system into modules (modularization), each of which has minimal dependencies on the other parts (loose coupling) and to encapsulate code that changes together (high cohesion). Depending on the architectural style, a module can model a monolithic component or a standalone service (for example, a microservice). Either way, we should aim at achieving proper modularization with loose coupling and high cohesion.
+Parnas identified three benefits of modularization:6
+ Managerial--Since each module is loosely coupled, the team responsible for it should not need to spend much time coordinating and communicating with other teams.
+ Product flexibility--The overall system should be flexible since each module is evolved independently of the others.
+ Comprehensibility--People should be able to understand and work with a module without having to study the whole system.
+The preceding benefits are usually among those associated with microservices, but the truth is that you don't need microservices to achieve them. In the last few years, many organizations have decided to migrate from monoliths to microservices. Some of them have failed because they lacked proper modularization. A monolith made up of tightly coupled, non-cohesive components, when migrated, produces a tightly coupled, non-cohesive microservice system, which sometimes is referred to as a distributed monolith. I don't consider this a good name because it implies that monoliths are made up of tightly coupled, non-cohesive components by definition. That's not true. The architectural style doesn't matter: a bad design is a bad design. Indeed, I like the modular monolith term proposed by Simon Brown to increase awareness that monoliths can
+
+6 D.L. Parnas, "On the criteria to be used in decomposing systems into modules," Communications of the ACM 15, 12 (December 1972), 1053­1058, http://mng.bz/gwOl.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.3 Properties of cloud native applications
+
+13
+
+promote loose coupling and high cohesion, and that both monoliths and microservices can end up being "big balls of mud."
+Throughout the book, I'll discuss some techniques for enforcing loose coupling in applications. In particular, we'll adopt a service-based architecture and focus on building services with clear interfaces to communicate with each other, minimal dependencies on other services, and high cohesion.
+
+1.3.3
+
+Resilience
+A system is resilient if it provides its services even in the presence of faults or environmental changes. Resilience is "the capability of a hardware-software network to provide and maintain an acceptable level of service in the face of faults and challenges to normal operation."7
+When building cloud native systems, our goal should be to guarantee that our applications are always available, whether there is a failure in the infrastructure or in our software. Cloud native applications run in a dynamic environment where everything keeps changing, and faults can and will occur. This cannot be prevented. In the past, we used to consider changes and faults as exceptions, but for highly distributed systems like cloud native ones, changes are not exceptions: they are the rule.
+When discussing resilience, it's worth defining three essential concepts: fault, error, and failure:8
+ Fault--A fault is a defect that produces an incorrect internal state either in the software or the infrastructure. For example, a method call returns a null value, even if its specification mandates that a non-null value is returned.
+ Error--An error is a discrepancy between the expected behavior of a system and the actual one. For example, due to the preceding fault, a NullPointerException is thrown.
+ Failure--When a fault is triggered and results in an error, a failure might occur, making the system unresponsive and unable to behave according to its specifications. For example, if the NullPointerException is not caught, the error provokes a failure: the system responds to any request with a 500 response.
+Faults can become errors, which may provoke failures, so we should design applications to be fault tolerant. An essential part of resilience is ensuring that a failure will not cascade to other components of the system but stay isolated while it gets fixed. We also want the system to be self-repairing or self-healing, and the cloud model can enable that.
+Throughout the book, I'll show you some techniques for tolerating faults and preventing their effects from propagating to other parts of the system and spreading the failure. For example, we'll use patterns like circuit breakers, retries, timeouts, and rate limiters.
+
+7 J.E. Blyler, "Heuristics for resilience--A richer metric than reliability," 2016 IEEE International Symposium on Systems Engineering (ISSE), 2016, pp. 1­4.
+8 A. Avizienis, J. Laprie, and B. Randell, "Fundamental Concepts of Dependability," 2001, http://mng.bz/e7ez.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+14
+
+CHAPTER 1 Introduction to cloud native
+
+1.3.4
+
+Observability
+Observability is a property that comes from the world of control theory. If you consider a system, observability is a measure of how well you can infer its internal state from its external outputs. In the software engineering context, the system is a single application or a distributed system as a whole. The external outputs can be data like metrics, logs, and traces. Figure 1.6 shows how observability works.
+
+Observability
+Immutable artifact
+
+Manageability
+Immutable artifact
+
+Application
+
+Output
+
+Input
+
+Application
+
+Output
+
+Infers the application's internal state
+
+Changes the application's internal state
+
+Changes the application's output
+
+Figure 1.6 Observability is about inferring the internal state of an application from its external outputs. Manageability is about changing the internal state and outputs via external inputs. In both cases, the application artifact is never changed. It's immutable.
+
+The Observability Engineering team at Twitter identifies four pillars of observability:9
+ Monitoring--Monitoring is about measuring specific aspects of an application to get information on its overall health and identify failures. In this book, you'll learn about the useful monitoring features of Spring Boot Actuator and integrate Prometheus with Spring to export relevant metrics about an application.
+ Alerting/visualization--Collecting data about the state of a system is useful only if it's used to take some action. When a failure is identified while monitoring an application, an alert should be triggered, and some action should be taken to handle it. Specific dashboards are used to visualize the data collected and plot them in relevant graphs to provide a good picture of the system's behavior. This book will show how to use Grafana to visualize data collected from cloud native applications.
+ Distributed systems tracing infrastructure--In a distributed system, it's not enough to track every single subsystem's behavior. It's essential to trace the data flowing through the different subsystems. In this book, you'll integrate Spring with OpenTelemetry and use Grafana Tempo to collect and visualize the traces.
+
+9 A. Asta, "Observability at Twitter: technical overview, part 1," March 18, 2016, http://mng.bz/pO8G.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.4 Culture and practices supporting cloud native
+
+15
+
+ Log aggregation/analytics--Keeping track of the main events in an application is critical to infer the software's behavior and debug it if something goes wrong. In a cloud native system, logs should be aggregated and collected to provide a better picture of the system's behavior and ensure the possibility of running analytics to mine information from that data. Throughout the book, I'll talk more about logs. You'll use Fluent Bit, Loki, and Grafana to collect and visualize logs, and you'll learn the best practices for logging in a cloud native context.
+
+1.3.5
+
+Manageability
+In control theory, the counterpart of observability is controllability--the ability of external input to change the state or the output of a system in a finite time interval. This concept leads us to the last of the main properties of cloud native: manageability.
+Drawing from control theory again, we can say that manageability measures how easily and efficiently an external input can change the state or the output of a system. In less mathematical terms, it's the ability to modify an application's behavior without needing to change its code. This is not to be confused with maintainability, which measures how easily and efficiently you can change a system from the inside by changing its code. Figure 1.6 shows how manageability works.
+One aspect of manageability is deploying and updating applications while keeping the overall system up and running. Another element is configuration, which I'll address in depth throughout the book. We want to make cloud native applications configurable so we can modify their behavior without changing their code and building a new release. It's common to make configurable settings like data source URLs, service credentials, and certificates. For example, depending on the environment, you may use different data sources: one for development, one for testing, and one for production. Other types of configuration could be feature flags, which determine whether specific features should be enabled at runtime. I'll show you different strategies for configuring applications throughout the book, including using Spring Cloud Config Server, Kubernetes ConfigMaps and Secrets, and Kustomize.
+Manageability is not only about particular changes themselves, but also about how easily and efficiently you can apply those changes. Cloud native systems are complex, so it's essential to design applications that can adapt to changing requirements regarding functionality, the environment, and security. Due to this complexity, we should aim at managing as much as possible through automation, which leads us to the last of the Three Ps of Cloud Native: practices.
+
+1.4 Culture and practices supporting cloud native
+This section will focus on the last sentence of the definition of cloud native technologies provided by the CNCF: "Combined with robust automation, they allow engineers to make high-impact changes frequently and predictably with minimal toil." I'll discuss three concepts: automation, continuous delivery, and DevOps (figure 1.7).
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+16
+
+CHAPTER 1 Introduction to cloud native
+
+Practices
+Automation Reproducible, efficient,
+and reliable systems
+
+Continuous delivery Better and faster software deliveries
+
+DevOps Culture of collaboration between different roles
+
+Figure 1.7 Culture and practices for cloud native development
+
+1.4.1
+
+Automation
+Automation is a core tenet of cloud native. The idea is to automate repetitive manual tasks to accelerate the delivery and deployment of cloud native applications. Many tasks can be automated, from building applications to deploying them, from provisioning infrastructure to managing configuration. The most important advantage of automation is that it makes processes and tasks repeatable and overall systems more stable and reliable. Manually executing a task is error-prone and costs money. By automating it, we can get a result that is both more reliable and more efficient.
+In the cloud computing model, computing resources are provisioned in an automated, self-service model, and they can be increased or decreased elastically. Two significant categories of automation for the cloud are infrastructure provisioning and configuration management. We call them infrastructure as code and configuration as code.
+Martin Fowler defines infrastructure as code as "the approach to defining computing and network infrastructure through source code that can then be treated just like any software system."10
+Cloud providers offer convenient APIs for creating and provisioning servers, networks, and storage. By automating those tasks with a tool like Terraform, putting the code in source control, and applying the same test and delivery practices used for application development, we get a more reliable and predictable infrastructure, which is reproducible, more efficient, and less risky. A simple example of an automated task could be creating a new virtual machine with 8 CPUs, 64 GB of memory, and Ubuntu 22.04 as the operating system.
+After we've provisioned computing resources, we can manage them and automate their configuration. Paraphrasing the previous definition, configuration as code is the approach to defining the configuration of computing resources through source code, which can be treated just like any software system.
+
+10 M. Fowler, "Infrastructure As Code," March 1, 2016, http://mng.bz/DD4.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+1.4 Culture and practices supporting cloud native
