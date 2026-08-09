@@ -2,7 +2,7 @@
 
 Catalog Service 应用程序可以运行了。在将其部署到云中之前，您应该对它进行容器化，这是为什么呢？容器提供了与周围环境的隔离，并具有应用程序运行所需的所有依赖项。在我们的例子中，大多数依赖项由 Gradle 管理，并与应用程序打包在一起（JAR 制品）。但 Java 运行时并非如此。将应用程序容器化，意味着它将独立且可跨任何云环境进行移植。如果没有容器，您需要在您想要部署应用程序的计算机上安装 JRE 17（您的应用程序正在使用的版本）。使用容器，您可以用标准方式管理所有应用程序，而不管应用使用的是何种语言和何种框架。
 
-Docker 是 Linux 容器最常用的实现。在 Docker 网站上（[www.docker.com](https://www.docker.com)），您可以找到适用您本地环境的 Docker 设置说明，包括 macOS、Linux 或 Windows。对于 macOS 和 Windows，您可以下载 `Docker Desktop` 应用程序。对于Linux，您可以找到在多个发行版上安装 Docker 的说明。一旦您设置好了 Docker，您就可以继续探索它是如何工作的，以及如何使用它运行容器化的 Spring Boot 应用程序。
+Docker 是 Linux 容器最常用的实现。在 Docker 网站上（[www.docker.com](https://www.docker.com)），您可以找到适用您本地环境的 Docker 设置说明，包括 macOS、Linux 或 Windows。对于 macOS 和 Windows，您可以下载 `Docker Desktop` 应用程序。对于 Linux，您可以找到在多个发行版上安装 Docker 的说明。一旦您设置好了 Docker，您就可以继续探索它是如何工作的，以及如何使用它运行容器化的 Spring Boot 应用程序。
 
 > macOS 和 Windows 上的 Docker 是如何工作的？
 > 在上一章中，您了解到容器共享相同的操作系统内核并依赖于 Linux 特性，如 namespaces 和 cGroup。我们将在 Linux 的 Docker 容器中运行 Spring Boot 应用程序，但 Docker 也能在 macOS 或 Windows 机器上工作吗？

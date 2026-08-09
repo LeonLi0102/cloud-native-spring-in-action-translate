@@ -12,16 +12,16 @@
 Spring 生态系统提供了许多选项来解决这些问题。我们可以将它们分为三组。
 
 * **配置服务** — Spring Cloud 项目提供了可用于运行自己的配置服务并配置 Spring Boot 应用程序的模块。
-  * Spring Cloud Alibaba 提供使用 Alibaba Nacos 作为数据存储的配置服务。
-  * Spring Cloud Config 提供由可插拔数据源（如 Git 仓库、数据存储或 HashiCorp Vault）支持的配置服务。
-  * Spring Cloud Consul 提供使用 HashiCorp Consul 作为数据存储的配置服务。
-  * Spring Cloud Vault 提供使用 HashiCorp Vault 作为数据存储的配置服务。
-  * Spring Cloud Zookeeper 提供使用 Apache Zookeeper 作为数据存储的配置服务。
+ * Spring Cloud Alibaba 提供使用 Alibaba Nacos 作为数据存储的配置服务。
+ * Spring Cloud Config 提供由可插拔数据源（如 Git 仓库、数据存储或 HashiCorp Vault）支持的配置服务。
+ * Spring Cloud Consul 提供使用 HashiCorp Consul 作为数据存储的配置服务。
+ * Spring Cloud Vault 提供使用 HashiCorp Vault 作为数据存储的配置服务。
+ * Spring Cloud Zookeeper 提供使用 Apache Zookeeper 作为数据存储的配置服务。
 
 * **云厂商服务** — 如果您在云厂商提供的平台上运行应用程序，可以考虑使用他们的配置服务之一。Spring Cloud 提供了与主要云厂商配置服务的集成，可用于配置 Spring Boot 应用程序。
-  * Spring Cloud AWS 提供与 AWS Parameter Store 和 AWS Secrets Manager 的集成。
-  * Spring Cloud Azure 提供与 Azure Key Vault 的集成。
-  * Spring Cloud GCP 提供与 GCP Secret Manager 的集成。
+ * Spring Cloud AWS 提供与 AWS Parameter Store 和 AWS Secrets Manager 的集成。
+ * Spring Cloud Azure 提供与 Azure Key Vault 的集成。
+ * Spring Cloud GCP 提供与 GCP Secret Manager 的集成。
 
 * **云平台服务** — 在 Kubernetes 平台上运行应用程序时，您可以无缝使用 ConfigMaps 和 Secrets 来配置 Spring Boot。
 

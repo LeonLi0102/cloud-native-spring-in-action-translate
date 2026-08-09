@@ -146,8 +146,8 @@ $ brew install kubectl
 
 ```bash
 $ kubectl get nodes
-NAME       STATUS   ROLES                  AGE   VERSION
-minikube   Ready    control-plane,master   2m20s   v1.24.3
+NAME STATUS ROLES AGE VERSION
+minikube Ready control-plane,master 2m20s v1.24.3
 ```
 
 我建议在不需要 minikube 时停止它，以释放本地环境中的资源：

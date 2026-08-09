@@ -46,11 +46,11 @@ $ doctl k8s options regions
 
 ```bash
 $ doctl k8s cluster create polar-cluster \
-  # 定义要创建的集群的名称
-  --node-pool "name=basicnp;size=s-2vcpu-4gb;count=3;label=type=basic;" \
-  # 提供工作节点的请求规格
-  --region <your_region>
-  # 您选择的数据中心区域，例如 "ams3"
+ # 定义要创建的集群的名称
+ --node-pool "name=basicnp;size=s-2vcpu-4gb;count=3;label=type=basic;" \
+ # 提供工作节点的请求规格
+ --region <your_region>
+ # 您选择的数据中心区域，例如 "ams3"
 ```
 
 > **注意** 如果您想了解更多关于不同计算选项及其价格的信息，可以使用 `doctl compute size list` 命令。
@@ -59,8 +59,8 @@ $ doctl k8s cluster create polar-cluster \
 
 ```bash
 $ doctl k8s cluster list
-ID           Name           Region   Status    Node Pools
-<cluster-id> polar-cluster  ams3     running   basicnp
+ID Name Region Status Node Pools
+<cluster-id> polar-cluster ams3 running basicnp
 ```
 
 在集群配置结束时，doctl 还将配置 Kubernetes CLI 的上下文，以便您可以从计算机与在 DigitalOcean 上运行的集群进行交互，类似于您到目前为止使用本地集群所做的操作。您可以通过运行以下命令验证 kubectl 的当前上下文：
@@ -75,10 +75,10 @@ $ kubectl config current-context
 
 ```bash
 $ kubectl get nodes
-NAME       STATUS   ROLES   AGE     VERSION
-<node-1>   Ready    <none>  2m34s   v1.24.3
-<node-2>   Ready    <none>  2m36s   v1.24.3
-<node-3>   Ready    <none>  2m26s   v1.24.3
+NAME STATUS ROLES AGE VERSION
+<node-1> Ready <none> 2m34s v1.24.3
+<node-2> Ready <none> 2m36s v1.24.3
+<node-3> Ready <none> 2m26s v1.24.3
 ```
 
 您还记得用于可视化本地 Kubernetes 集群上的工作负载的 Octant 仪表板吗？您现在可以使用它来获取有关 DigitalOcean 上集群的信息。打开终端窗口并使用以下命令启动 Octant：
@@ -120,17 +120,17 @@ $ ./deploy.sh
 
 ```bash
 $ doctl databases create polar-db \
-  --engine pg \
-  --region <your_region> \
-  --version 14
+ --engine pg \
+ --region <your_region> \
+ --version 14
 ```
 
 数据库服务器配置将需要几分钟。您可以通过以下命令验证安装状态（为清晰起见，我已过滤结果）：
 
 ```bash
 $ doctl databases list
-ID             Name      Engine   Version   Region   Status
-<polar-db-id>  polar-db  pg       14        ams3     online
+ID Name Engine Version Region Status
+<polar-db-id> polar-db pg 14 ams3 online
 ```
 
 当数据库联机时，您的数据库服务器已准备就绪。记下数据库服务器 ID。您稍后会需要它。
@@ -152,9 +152,9 @@ $ doctl databases db create <postgres_id> polardb_order
 
 ```bash
 $ doctl databases connection <postgres_id> --format Host,Port,User,Password
-Host     <db-host>
-Port     <db-port>
-User     <db-user>
+Host <db-host>
+Port <db-port>
+User <db-user>
 Password <db-password>
 ```
 
@@ -164,19 +164,19 @@ Password <db-password>
 
 ```bash
 $ kubectl create secret generic polar-postgres-catalog-credentials \
-  --from-literal=spring.datasource.url=jdbc:postgresql://<postgres_host>:<postgres_port>/polardb_catalog \
-  --from-literal=spring.datasource.username=<postgres_username> \
-  --from-literal=spring.datasource.password=<postgres_password>
+ --from-literal=spring.datasource.url=jdbc:postgresql://<postgres_host>:<postgres_port>/polardb_catalog \
+ --from-literal=spring.datasource.username=<postgres_username> \
+ --from-literal=spring.datasource.password=<postgres_password>
 ```
 
 同样，为 Order Service 创建 Secret。注意 Spring Data R2DBC 对 URL 要求的语法略有不同：
 
 ```bash
 $ kubectl create secret generic polar-postgres-order-credentials \
-  --from-literal="spring.flyway.url=jdbc:postgresql://<postgres_host>:<postgres_port>/polardb_order" \
-  --from-literal="spring.r2dbc.url=r2dbc:postgresql://<postgres_host>:<postgres_port>/polardb_order?ssl=true&sslMode=require" \
-  --from-literal=spring.r2dbc.username=<postgres_username> \
-  --from-literal=spring.r2dbc.password=<postgres_password>
+ --from-literal="spring.flyway.url=jdbc:postgresql://<postgres_host>:<postgres_port>/polardb_order" \
+ --from-literal="spring.r2dbc.url=r2dbc:postgresql://<postgres_host>:<postgres_port>/polardb_order?ssl=true&sslMode=require" \
+ --from-literal=spring.r2dbc.username=<postgres_username> \
+ --from-literal=spring.r2dbc.password=<postgres_password>
 ```
 
 PostgreSQL 就到这里。在下一节中，您将了解如何使用 DigitalOcean 初始化 Redis。
@@ -191,17 +191,17 @@ PostgreSQL 就到这里。在下一节中，您将了解如何使用 DigitalOcea
 
 ```bash
 $ doctl databases create polar-redis \
-  --engine redis \
-  --region <your_region> \
-  --version 7
+ --engine redis \
+ --region <your_region> \
+ --version 7
 ```
 
 Redis 服务器配置将需要几分钟。您可以通过以下命令验证安装状态（为清晰起见，我已过滤结果）：
 
 ```bash
 $ doctl databases list
-ID              Name       Engine   Version   Region   Status
-<redis-db-id>   polar-redis redis    7         ams3     creating
+ID Name Engine Version Region Status
+<redis-db-id> polar-redis redis 7 ams3 creating
 ```
 
 当服务器联机时，您的 Redis 服务器已准备就绪。记下 Redis 资源 ID。您稍后会需要它。
@@ -216,21 +216,21 @@ $ doctl databases firewalls append <redis_id> --rule k8s:<cluster_id>
 
 ```bash
 $ doctl databases connection <redis_id> --format Host,Port,User,Password
-Host      <redis-host>
-Port      <redis-port>
-User      <redis-user>
-Password  <redis-password>
+Host <redis-host>
+Port <redis-port>
+User <redis-user>
+Password <redis-password>
 ```
 
 在结束本节之前，让我们在 Kubernetes 集群中创建一个 Secret，其中包含 Edge Service 所需的 Redis 凭据。在真实场景中，我们应该为应用程序创建一个专用用户并授予权限。为简单起见，我们将使用默认帐户。使用上一个 doctl 命令返回的信息填充 Secret：
 
 ```bash
 $ kubectl create secret generic polar-redis-credentials \
-  --from-literal=spring.redis.host=<redis_host> \
-  --from-literal=spring.redis.port=<redis_port> \
-  --from-literal=spring.redis.username=<redis_username> \
-  --from-literal=spring.redis.password=<redis_password> \
-  --from-literal=spring.redis.ssl=true
+ --from-literal=spring.redis.host=<redis_host> \
+ --from-literal=spring.redis.port=<redis_port> \
+ --from-literal=spring.redis.username=<redis_username> \
+ --from-literal=spring.redis.password=<redis_password> \
+ --from-literal=spring.redis.ssl=true
 ```
 
 Redis 就到这里。下一节将介绍如何使用 Kubernetes Operator 部署 RabbitMQ。
@@ -307,8 +307,8 @@ Keycloak 服务器部署在专用的 `keycloak-system` 命名空间中。应用�
 
 ```bash
 $ kubectl get service polar-keycloak -n keycloak-system
-NAME           TYPE           CLUSTER-IP     EXTERNAL-IP
-polar-keycloak LoadBalancer   10.245.191.181 <external-ip>
+NAME TYPE CLUSTER-IP EXTERNAL-IP
+polar-keycloak LoadBalancer 10.245.191.181 <external-ip>
 ```
 
 平台可能需要几分钟来配置负载均衡器。在配置期间，EXTERNAL-IP 列将显示 `<pending>` 状态。等待并重试，直到显示 IP 地址。记下它，因为我们将在多个场景中使用它。
@@ -353,9 +353,9 @@ $ doctl k8s cluster delete polar-cluster
 
 ```bash
 $ doctl databases list
-ID             Name       Engine   Version   Region   Status
-<polar-db-id>  polar-db   pg       14        ams3     online
-<redis-db-id>  polar-redis redis    7         ams3     creating
+ID Name Engine Version Region Status
+<polar-db-id> polar-db pg 14 ams3 online
+<redis-db-id> polar-redis redis 7 ams3 creating
 ```
 
 然后继续使用上一个命令返回的资源标识符删除它们：

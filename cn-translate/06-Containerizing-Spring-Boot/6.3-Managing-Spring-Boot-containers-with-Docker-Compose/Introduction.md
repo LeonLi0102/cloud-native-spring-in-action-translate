@@ -26,36 +26,36 @@ version: "3.8"
 
 # 包含所有要运行容器的部分
 services:
-  # 描述 catalog-service 容器的部分
-  catalog-service:
-    # Catalog Service 应在 PostgreSQL 数据库之后启动
-    depends_on:
-      - polar-postgres
-    # 用于运行容器的镜像
-    image: "catalog-service"
-    # 容器名称
-    container_name: "catalog-service"
-    # 端口映射列表
-    ports:
-      - 9001:9001
-    # 环境变量列表
-    environment:
-      # Paketo Buildpacks 环境变量，用于配置内存计算的线程数
-      - BPL_JVM_THREAD_COUNT=50
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
-      # 启用 "testdata" Spring 配置文件
-      - SPRING_PROFILES_ACTIVE=testdata
+ # 描述 catalog-service 容器的部分
+ catalog-service:
+ # Catalog Service 应在 PostgreSQL 数据库之后启动
+ depends_on:
+ - polar-postgres
+ # 用于运行容器的镜像
+ image: "catalog-service"
+ # 容器名称
+ container_name: "catalog-service"
+ # 端口映射列表
+ ports:
+ - 9001:9001
+ # 环境变量列表
+ environment:
+ # Paketo Buildpacks 环境变量，用于配置内存计算的线程数
+ - BPL_JVM_THREAD_COUNT=50
+ - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
+ # 启用 "testdata" Spring 配置文件
+ - SPRING_PROFILES_ACTIVE=testdata
 
-  # 描述 polar-postgres 容器的部分
-  polar-postgres:
-    image: "postgres:14.4"
-    container_name: "polar-postgres"
-    ports:
-      - 5432:5432
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=polardb_catalog
+ # 描述 polar-postgres 容器的部分
+ polar-postgres:
+ image: "postgres:14.4"
+ container_name: "polar-postgres"
+ ports:
+ - 5432:5432
+ environment:
+ - POSTGRES_USER=user
+ - POSTGRES_PASSWORD=password
+ - POSTGRES_DB=polardb_catalog
 ```
 
 您可能注意到了 Catalog Service 容器上有一个额外的环境变量。在第 15 章中，您将了解 Paketo Buildpacks 提供的 Java 内存计算器以及如何为 Spring Boot 应用程序配置 CPU 和内存。目前，只需知道 BPL_JVM_THREAD_COUNT 环境变量用于配置 JVM 栈中应为其分配内存的线程数。基于 Servlet 的应用程序的默认值是 250。在第 3 章中，我们为 Tomcat 线程池使用了一个较低的值，为 JVM 内存配置做同样的操作也是好的，以保持容器在本地较低的内存使用。您将在整本书中部署许多容器（包括应用程序和支撑服务），这种配置有助于在不使计算机过载的情况下实现这一目标。
@@ -86,26 +86,26 @@ $ docker-compose up -d
 ```yaml
 version: "3.8"
 services:
-  catalog-service:
-    depends_on:
-      - polar-postgres
-    image: "catalog-service"
-    container_name: "catalog-service"
-    ports:
-      - 9001:9001
-      # JVM 将监听调试连接的端口
-      - 8001:8001
-    environment:
-      - BPL_JVM_THREAD_COUNT=50
-      # 激活 JVM 配置以接受调试连接（由 Buildpacks 提供）
-      - BPL_DEBUG_ENABLED=true
-      # 调试连接通过端口 8001 上的套接字接受（由 Buildpacks 提供）
-      - BPL_DEBUG_PORT=8001
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
-      - SPRING_PROFILES_ACTIVE=testdata
+ catalog-service:
+ depends_on:
+ - polar-postgres
+ image: "catalog-service"
+ container_name: "catalog-service"
+ ports:
+ - 9001:9001
+ # JVM 将监听调试连接的端口
+ - 8001:8001
+ environment:
+ - BPL_JVM_THREAD_COUNT=50
+ # 激活 JVM 配置以接受调试连接（由 Buildpacks 提供）
+ - BPL_DEBUG_ENABLED=true
+ # 调试连接通过端口 8001 上的套接字接受（由 Buildpacks 提供）
+ - BPL_DEBUG_PORT=8001
+ - SPRING_DATASOURCE_URL=jdbc:postgresql://polar-postgres:5432/polardb_catalog
+ - SPRING_PROFILES_ACTIVE=testdata
 
-  polar-postgres:
-    # ...
+ polar-postgres:
+ # ...
 ```
 
 从终端窗口，导航到 docker-compose.yml 文件所在的文件夹，重新运行以下命令：
