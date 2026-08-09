@@ -1,0 +1,440 @@
+With Spring Boot and Kubernetes
+Thomas Vitale
+Foreword by Josh Long
+MANNING
+
+Cloud Native Spring in Action
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Cloud Native Spring in Action
+WITH SPRING BOOT AND KUBERNETES
+THOMAS VITALE
+Foreword by JOSH LONG
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+MANNING
+SHELTER ISLAND
+
+For online information and ordering of this and other Manning books, please visit www.manning.com. The publisher offers discounts on this book when ordered in quantity. For more information, please contact
+Special Sales Department Manning Publications Co. 20 Baldwin Road PO Box 761 Shelter Island, NY 11964 Email: orders@manning.com
+©2023 by Manning Publications Co. All rights reserved.
+
+No part of this publication may be reproduced, stored in a retrieval system, or transmitted, in any form or by means electronic, mechanical, photocopying, or otherwise, without prior written permission of the publisher.
+
+Many of the designations used by manufacturers and sellers to distinguish their products are claimed as trademarks. Where those designations appear in the book, and Manning Publications was aware of a trademark claim, the designations have been printed in initial caps or all caps.
+Recognizing the importance of preserving what has been written, it is Manning's policy to have the books we publish printed on acid-free paper, and we exert our best efforts to that end. Recognizing also our responsibility to conserve the resources of our planet, Manning books are printed on paper that is at least 15 percent recycled and processed without the use of elemental chlorine.
+
+The author and publisher have made every effort to ensure that the information in this book was correct at press time. The author and publisher do not assume and hereby disclaim any liability to any party for any loss, damage, or disruption caused by errors or omissions, whether such errors or omissions result from negligence, accident, or any other cause, or from any usage of the information herein.
+
+Manning Publications Co. 20 Baldwin Road PO Box 761 Shelter Island, NY 11964
+
+Development editor: Jenny Stout Technical development editor: Nickie Buckner
+Review editor: Mihaela Batinic´ Production editor: Andy Marinkovich
+Copy editor: Andy Carroll Proofreader: Keri Hales Technical proofreader: Niek Palm
+Typesetter: Dennis Dalinnik Cover designer: Marija Tudor
+
+ISBN: 9781617298424 Printed in the United States of America
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+To my sister, Alissa. The bravest person I know.
+Licensed to Zhigang Li <lzg14@qq.com>
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+brief contents
+PART 1 CLOUD NATIVE FUNDAMENTALS .....................................1
+1  Introduction to cloud native 3 2  Cloud native patterns and technologies 35
+PART 2 CLOUD NATIVE DEVELOPMENT.....................................69
+3  Getting started with cloud native development 71 4  Externalized configuration management 112 5  Persisting and managing data in the cloud 148 6  Containerizing Spring Boot 179 7  Kubernetes fundamentals for Spring Boot 215
+PART 3 CLOUD NATIVE DISTRIBUTED SYSTEMS ....................... 251
+8  Reactive Spring: Resilience and scalability 253 9  API gateway and circuit breakers 294 10  Event-driven applications and functions 327 11  Security: Authentication and SPA 365 12  Security: Authorization and auditing 406
+vii
+Licensed to Zhigang Li <lzg14@qq.com>
+
+viii
+
+BRIEF CONTENTS
+
+PART 4 CLOUD NATIVE PRODUCTION .....................................445
+13  Observability and monitoring 447 14  Configuration and secrets management 486 15  Continuous delivery and GitOps 518 16  Serverless, GraalVM, and Knative 555
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+contents
+foreword xix preface xxi acknowledgments xxiii about this book xxv about the author xxx about the cover illustration xxxi
+PART 1 CLOUD NATIVE FUNDAMENTALS ...........................1
+1 Introduction to cloud native 3 1.1 What is cloud native? 4 The Three Ps of Cloud Native 5 1.2 The cloud and the cloud computing model 6 Infrastructure as a Service (IaaS) 8  Container as a Service (CaaS) 9  Platform as a Service (PaaS) 9  Function as a Service (FaaS) 9  Software as a Service (SaaS) 9 1.3 Properties of cloud native applications 10 Scalability 11  Loose coupling 12  Resilience 13 Observability 14  Manageability 15 1.4 Culture and practices supporting cloud native 15 Automation 16  Continuous delivery 17  DevOps 19
+ix
+Licensed to Zhigang Li <lzg14@qq.com>
+
+x
+
+CONTENTS
+
+1.5 Is the cloud your best option? 21
+Speed 21  Resilience 22  Scale 23  Cost 23
+1.6 Cloud native topologies 24
+Containers 24  Orchestration 27  Serverless 28
+1.7 Architectures for cloud native applications 29
+From multi-tiered to microservices architectures and beyond 30 Service-based architecture for cloud native applications 32
+2 Cloud native patterns and technologies 35 2.1 Cloud native development principles: 12 Factors and beyond 36 One codebase, one application 37  API first 37  Dependency management 37  Design, build, release, run 38 Configuration, credentials, and code 38  Logs 38 Disposability 39  Backing services 39  Environment parity 39  Administrative processes 40  Port binding 40 Stateless processes 41  Concurrency 41  Telemetry 41 Authentication and authorization 41
+2.2 Building cloud native applications with Spring 42
+Overview of the Spring landscape 42  Building a Spring Boot application 43
+2.3 Containerizing applications with Docker 51
+Introducing Docker: Images and containers 52  Running a Spring application as a container 55
+2.4 Managing containers with Kubernetes 57
+Introducing Kubernetes: Deployments, Pods, and Services 58 Running a Spring application on Kubernetes 59
+2.5 Polar Bookshop: A cloud native application 62
+Understanding the requirements of the system 62  Exploring patterns and technologies used in the project 63
+
+PART 2 CLOUD NATIVE DEVELOPMENT ...........................69
+3 Getting started with cloud native development 71 3.1 Bootstrapping a cloud native project 72 One codebase, one application 72  Dependency management with Gradle and Maven 73
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+CONTENTS
+
+xi
+
+3.2 Working with embedded servers 75
+Executable JARs and embedded servers 76  Understanding the thread-per-request model 78  Configuring the embedded Tomcat 80
+3.3 Building a RESTful application with Spring MVC 82
+REST API first, business logic later 82  Implementing a REST API with Spring MVC 87  Data validation and error handling 90  Evolving APIs for future requirements 94
+3.4 Testing a RESTful application with Spring 94
+Unit tests with JUnit 5 96  Integration tests with @SpringBootTest 97  Testing REST controllers with @WebMvcTest 100  Testing the JSON serialization with @JsonTest 101
+3.5 Deployment pipeline: Build and test 103
+Understanding the commit stage of the deployment pipeline 104 Implementing the commit stage with GitHub Actions 105
+4 Externalized configuration management 112 4.1 Configuration in Spring: Properties and profiles 115 Properties: Key/value pairs for configuration 116  Profiles: Feature flags and configuration groups 121
+4.2 Externalized configuration: One build, multiple configurations 125
+Configuring an application through command-line arguments 126 Configuring an application through JVM system properties 126 Configuring an application through environment variables 127
+4.3 Centralized configuration management with Spring Cloud Config Server 128
+Using Git to store your configuration data 131  Setting up a configuration server 133  Making the configuration server resilient 137  Understanding the configuration server REST API 138
+4.4 Using a configuration server with Spring Cloud Config Client 140
+Setting up a configuration client 140  Making the configuration client resilient 142  Refreshing configuration at runtime 143
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xii
+
+CONTENTS
+
+5 Persisting and managing data in the cloud 148 5.1 Databases for cloud native systems 149 Data services in the cloud 149  Running PostgreSQL as a container 153
+5.2 Data persistence with Spring Data JDBC 154
+Connecting to a database with JDBC 156  Defining persistent entities with Spring Data 158  Enabling and configuring JDBC auditing 163  Data repositories with Spring Data 166
+5.3 Testing data persistence with Spring and Testcontainers 169
+Configuring Testcontainers for PostgreSQL 170  Testing data persistence with @DataJdbcTest and Testcontainers 171 Integration tests with @SpringBootTest and Testcontainers 172
+5.4 Managing databases in production with Flyway 173
+Understanding Flyway: Version control for your database 173 Initializing a database schema with Flyway 175  Evolving a database with Flyway 176
+6 Containerizing Spring Boot 179 6.1 Working with container images on Docker 180 Understanding container images 181  Creating images with Dockerfiles 182  Publishing images on GitHub Container Registry 185
+6.2 Packaging Spring Boot applications as container images 188
+Preparing Spring Boot for containerization 189  Containerizing Spring Boot with Dockerfiles 191  Building container images for production 193  Containerizing Spring Boot with Cloud Native Buildpacks 197
+6.3 Managing Spring Boot containers with Docker Compose 202
+Using Docker Compose to manage the container life cycle 203 Debugging Spring Boot containers 204
+6.4 Deployment pipeline: Package and publish 207
+Building release candidates in the commit stage 207  Publishing container images with GitHub Actions 208
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+CONTENTS
+
+xiii
+
+7 Kubernetes fundamentals for Spring Boot 215 7.1 Moving from Docker to Kubernetes 216 Working with a local Kubernetes cluster 218  Managing data services in a local cluster 220
+7.2 Kubernetes Deployments for Spring Boot 221
+From containers to Pods 221  Controlling Pods with Deployments 222  Creating a Deployment for a Spring Boot application 223
+7.3 Service discovery and load balancing 228
+Understanding service discovery and load balancing 228  Clientside service discovery and load balancing 229  Server-side service discovery and load balancing 231  Exposing Spring Boot applications with Kubernetes Services 233
+7.4 Scalability and disposability 236
+Ensuring disposability: Fast startup 236  Ensuring disposability: Graceful shutdown 236  Scaling Spring Boot applications 239
+7.5 Local Kubernetes development with Tilt 241
+Inner development loop with Tilt 241  Visualizing your Kubernetes workloads with Octant 244
+7.6 Deployment pipeline: Validate Kubernetes manifests 245
+Validating Kubernetes manifests in the commit stage 246 Automating Kubernetes manifests validation with GitHub Actions 247
+
+PART 3 CLOUD NATIVE DISTRIBUTED SYSTEMS..............251
+8 Reactive Spring: Resilience and scalability 253 8.1 Asynchronous and non-blocking architectures with Reactor and Spring 255 From thread-per-request to event loop 255  Project Reactor: Reactive streams with Mono and Flux 257  Understanding the Spring reactive stack 258
+8.2 Reactive servers with Spring WebFlux and Spring Data R2DBC 259
+Bootstrapping a reactive application with Spring Boot 261 Persisting data reactively with Spring Data R2DBC 263 Implementing the business logic with reactive streams 269 Exposing a REST API with Spring WebFlux 271
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xiv
+
+CONTENTS
+
+8.3 Reactive clients with Spring WebClient 273
+Service-to-service communication in Spring 273  Understanding how to exchange data 275  Implementing REST clients with WebClient 276
+8.4 Resilient applications with Reactive Spring 279
+Timeouts 280  Retries 283  Fallbacks and error handling 285
+8.5 Testing reactive applications with Spring, Reactor, and Testcontainers 286
+Testing REST clients with a mock web server 287  Testing data persistence with @DataR2dbcTest and Testcontainers 289 Testing REST controllers with @WebFluxTest 290
+
+9 API gateway and circuit breakers 294 9.1 Edge servers and Spring Cloud Gateway 295 Bootstrapping an edge server with Spring Cloud Gateway 297 Defining routes and predicates 299  Processing requests and responses through filters 303
+9.2 Fault tolerance with Spring Cloud Circuit Breaker and Resilience4J 304
+Introducing circuit breakers with Spring Cloud Circuit Breaker 306 Configuring a circuit breaker with Resilience4J 307  Defining fallback REST APIs with Spring WebFlux 308  Combining circuit breakers, retries, and time limiters 309
+9.3 Request rate limiting with Spring Cloud Gateway and Redis 311
+Running Redis as a container 312  Integrating Spring with Redis 313  Configuring a request rate limiter 314
+9.4 Distributed session management with Redis 316
+Handling sessions with Spring Session Data Redis 317
+9.5 Managing external access with Kubernetes Ingress 320
+Understanding Ingress API and Ingress Controller 320  Working with Ingress objects 323
+
+10
+
+Event-driven applications and functions 327
+10.1 Event-driven architectures 328
+Understanding the event-driven models 329  Using the pub/sub model 329
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+CONTENTS
+
+xv
+
+10.2 Message brokers with RabbitMQ 331
+Understanding AMQP for messaging systems 332  Using RabbitMQ for publish/subscribe communications 333
+
+10.3 Functions with Spring Cloud Function 335
+Using the functional paradigm in Spring Cloud Function 335 Composing and integrating functions: REST, serverless, data streams 340  Writing integration tests with @FunctionalSpringBootTest 342
+
+10.4 Processing messages with Spring Cloud Stream 344
+Configuring the integration with RabbitMQ 344  Binding functions to message channels 346  Writing integration tests with a test binder 352  Making messaging resilient to failures 354
+
+10.5 Producing and consuming messages with Spring Cloud Stream 355
+Implementing event consumers, and the problem of idempotency 355 Implementing event producers, and the problem of atomicity 358
+
+11
+
+Security: Authentication and SPA 365
+11.1 Understanding the Spring Security fundamentals 366 11.2 Managing user accounts with Keycloak 370
+Defining a security realm 372  Managing users and roles 373
+
+11.3 Authentication with OpenID Connect, JWT,
+and Keycloak 374
+Authenticating users with OpenID Connect 374  Exchanging user information with JWT 378  Registering an application in Keycloak 379
+
+11.4 Authenticating users with Spring Security and OpenID
+Connect 382
+Adding the new dependencies 383  Configuring the integration between Spring Security and Keycloak 383  Basic Spring Security configuration 384  Inspecting the authenticated user context 386 Configuring user logout in Spring Security and Keycloak 390
+
+11.5 Integrating Spring Security with SPAs 393
+Running an Angular application 393  Controlling the authentication flow 395  Protecting against Cross-Site Request Forgery 398
+
+11.6 Testing Spring Security and OpenID Connect 400
+Testing OIDC authentication 400  Testing CSRF 402
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xvi
+
+CONTENTS
+
+12
+
+Security: Authorization and auditing 406
+12.1 Authorization and roles with Spring Cloud Gateway and OAuth2 407
+Token relay from Spring Cloud Gateway to other services 409 Customizing tokens and propagating user roles 412
+
+12.2 Protecting APIs with Spring Security and OAuth2
+(imperative) 417
+Securing Spring Boot as an OAuth2 Resource Server 417 Role-based access control with Spring Security and JWT 420 Testing OAuth2 with Spring Security and Testcontainers 423
+
+12.3 Protecting APIs with Spring Security and OAuth2 (reactive) 429
+Securing Spring Boot as an OAuth2 Resource Server 429 Testing OAuth2 with Spring Security and Testcontainers 431
+
+12.4 Protecting and auditing data with Spring Security
+and Spring Data 433
+Auditing data with Spring Security and Spring Data JDBC 433 Testing data auditing with Spring Data and @WithMockUser 436 Protecting user data with Spring Security and Spring Data R2DBC 437  Testing data auditing and protection with @WithMockUser and Spring Data R2DBC 441
+
+PART 4 CLOUD NATIVE PRODUCTION...........................445
+13 Observability and monitoring 447 13.1 Logging with Spring Boot, Loki, and Fluent Bit 448 Logging with Spring Boot 449  Managing logs with Loki, Fluent Bit, and Grafana 452
+13.2 Health probes with Spring Boot Actuator and Kubernetes 456
+Defining health probes for Spring Boot applications using Actuator 457  Configuring health probes in Spring Boot and Kubernetes 460
+13.3 Metrics and monitoring with Spring Boot Actuator, Prometheus, and Grafana 464
+Configuring metrics with Spring Boot Actuator and Micrometer 465  Monitoring metrics with Prometheus and Grafana 467  Configuring Prometheus metrics in Kubernetes 470
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+CONTENTS
+
+xvii
+
+13.4 Distributed tracing with OpenTelemetry and Tempo 472
+Managing traces with Tempo and Grafana 474  Configuring tracing in Spring Boot with OpenTelemetry 475
+13.5 Application management and monitoring with Spring Boot Actuator 479
+Monitoring Flyway migrations in Spring Boot 480  Exposing application information 481  Generating and analyzing heap dumps 483
+14 Configuration and secrets management 486 14.1 Configuring applications on Kubernetes 487
+Securing the configuration server with Spring Security 488 Refreshing configuration at runtime with Spring Cloud Bus 488 Managing secrets with Spring Cloud Config 490  Disabling Spring Cloud Config 491
+14.2 Using ConfigMaps and Secrets in Kubernetes 491
+Configuring Spring Boot with ConfigMaps 492  Storing sensitive information with Secrets (or not) 497  Refreshing configuration at runtime with Spring Cloud Kubernetes 499
+14.3 Configuration management with Kustomize 501
+Using Kustomize to manage and configure Spring Boot applications 502  Managing Kubernetes configuration for multiple environments with Kustomize 506  Defining a configuration overlay for staging 509  Customizing environment variables 510  Customizing ConfigMaps 511  Customizing image name and version 512  Customizing the number of replicas 514
+15 Continuous delivery and GitOps 518 15.1 Deployment pipeline: Acceptance stage 519
+Versioning release candidates for continuous delivery 519 Understanding the acceptance stage of the deployment pipeline 523 Implementing the acceptance stage with GitHub Actions 525
+15.2 Configuring Spring Boot for production 528
+Defining a configuration overlay for production 528 Configuring CPU and memory for Spring Boot containers 534 Deploying Spring Boot in production 539
+15.3 Deployment pipeline: Production stage 540
+Understanding the production stage of the deployment pipeline 541 Implementing the production stage with GitHub Actions 541
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xviii
+
+CONTENTS
+
+15.4 Continuous deployment with GitOps 547
+Implementing GitOps with Argo CD 549  Putting it all together 552
+
+16
+
+Serverless, GraalVM, and Knative 555
+16.1 Native images with Spring Native and GraalVM 556
+Understanding GraalVM and native images 556  Introducing GraalVM support for Spring Boot with Spring Native 557 Compiling Spring Boot applications as native images 563
+
+16.2 Serverless applications with Spring Cloud Function 566
+Building serverless applications with Spring Cloud Function 567 Deployment pipeline: Build and publish 571  Deploying serverless applications on the cloud 573
+
+16.3 Deploying serverless applications with Knative 574
+Setting up a local Knative platform 575  Deploying applications with the Knative CLI 575  Deploying applications with the Knative manifests 577
+
+appendix A Setting up your development environment 582 appendix B Kubernetes in production with DigitalOcean 589
+index 601
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+foreword
+I've written dozens of forewords and prefaces over the years, but this might be the first time I've been annoyed having to write one. Why? I'm a sore loser! I am sore that I didn't write this book. I am sore because I wonder if I even could write it.
+This book is fantastic. Its pages are brimming with valuable ideas couched in evident, profound experience. I have always wanted to see all these concepts put in one place, and I will be pointing people to this book for the foreseeable future.
+Building production-worthy applications, where production is mostly Kubernetes these days, and building out production itself? That's a hefty lift, just like this book, which clocks in at more than 600 pages! But don't let my prattling about size dissuade you from buying this book. It's a big book for an even bigger topic.
+This book covers the usual suspects: how to build services and microservices, how to handle persistence, messaging, instrumenting for observability, configuration, and security. In addition, there are whole chapters dedicated to some of these concepts.
+Your Spring Boot application is the crowning jewel of this book's ambitions (a storefront system, 'natch), but it's by no means the only thing on which the book focuses. The book is as deep as it is broad in focus--a stunning achievement! I suppose I should list some specifics, so you can begin to appreciate just how nuanced this book's coverage is. Before I do, remember, you must read this book. The following list is by no means exhaustive, but it includes stuff that I found myself stunned to be reading about. It's stuff that should be in a book about Spring Boot and Spring Cloud but, unfortunately, rarely is.
+xix
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xx
+
+FOREWORD
+
+ There's a fantastic treatment of logging with Loki, FluentBit, and Grafana.  This book takes you well beyond just "up and running" in Kubernetes. By the
+end of the book, you'll be wielding Kubernetes Deployments with ease. You'll go serverless with Knative and Spring Cloud Function. Next, you'll build pipelines with tools like GitHub Actions, Kustomize, and Kubeval. Finally, you'll develop locally with tools like Tilt and Docker Compose.  The discussion of security in the context of a single-page application (SPA) could be its own excellent book. It's competent, iterative, quick, and production minded. Do not miss this chapter.  Everything is done with tests in mind. Spring's got complementary test modules for various projects, which are elegantly on display here.  This book introduces GraalVM's native-image compiler and the Spring Native project. Spring Native is a relatively recent addition to the ecosystem, so nobody would blame Thomas for not including it. But he did. What a legend!  Thomas introduces much of why we do the things described in this book, in line with the new technical concepts. I particularly enjoyed the treatment of Agile and GitOps.
+Spring Boot has changed the world, and Thomas's book is the best map for this brave, "bootiful" new world. Buy it. Read it. Act on it. Build something amazing and enjoy your journey to production!
+--JOSH LONG SPRING DEVELOPER ADVOCATE
+VMWARE TANZU @STARBUXMAN
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+preface
+I clearly remember the first time I went on a field trip to see how nurses and practitioners used the software developed by the company I work with in their daily jobs. Witnessing how our applications improved the way they take care of their patients was an incredible moment. Software can make a difference. That's why we build it. We solve problems through technology with the goal of delivering value to our users, our customers, and the business itself.
+Another moment I can't forget was when I learned about Spring Boot. Until then, I enjoyed working with the core Spring Framework very much. I was particularly fond of the code I wrote to manage aspects like security, data persistence, HTTP communications, and integrations. It was a lot of hard work, but it was worth it, especially considering the alternatives at that time in the Java landscape. Spring Boot changed everything. Suddenly the platform itself was taking care of all those aspects for me. All the code that handled infrastructural concerns and integrations wasn't needed anymore.
+But then it occurred to me: all the code that handled infrastructural concerns and integrations wasn't needed anymore! When I started deleting all that code, I realized how much time I had spent on it, compared to the business logic of the application, the part producing value. And I realized how little code was actually part of the business logic, compared to all the boilerplate code. It was a pivotal moment!
+After many years, Spring Boot is still the leading platform for building enterprisegrade software products in the Java landscape, and one of the reasons for its popularity is its focus on developer productivity. What makes each application special is its business logic, not how it exposes its data or connects to a database. And it's that
+xxi
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xxii
+
+PREFACE
+
+business logic that ultimately delivers value to users, customers, and businesses. Leveraging a broad ecosystem of frameworks, libraries, and integrations, Spring Boot enables developers to focus on the business logic while taking care of the plumbing and boilerplate code.
+The cloud was another game-changer in our field, as well as Kubernetes, which quickly imposed itself as the "operating system" of the cloud. Leveraging the features of the cloud computing model, we can build cloud native applications and achieve better scalability, resilience, speed, and cost optimizations for our projects. Ultimately, we have an opportunity to increase the value we produce via our software and solve new types of problems in a way that was not possible before.
+The idea for this book came from my wish to help software engineers in their journey to deliver value. I'm glad you decided to join me in this adventure from code to production. Spring Boot, and the Spring ecosystem in general, represent the backbone of such a journey. The cloud native principles and patterns will guide us through our implementation of various applications. The continuous delivery practices will support us in delivering high-quality software safely, quickly, and reliably. Kubernetes and its ecosystem will provide a platform for deploying and releasing our applications to their users.
+When structuring and writing this book, my guiding principle was to provide relevant, real-world examples that you can immediately apply to your daily job. All the technologies and patterns covered in the book aim to deliver high-quality software in production, within the limits of what can be included in a book with limited space. I hope I succeeded in meeting that goal.
+Thanks again for joining me on this cloud native journey from code to production. I wish you an enjoyable and educational experience reading this book, and I hope it will help you deliver more value with your software and make a difference.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+acknowledgments
+Writing a book is hard, and it wouldn't have been possible without the support of many people who helped me throughout the development process. First, I want to thank my family and friends who continuously encouraged me and supported me along the way. Special thanks to my parents Sabrina and Plinio, my sister Alissa, and my grandfather Antonio for their constant support and for believing in me.
+I want to thank my friends and fellow engineers Filippo, Luciano, Luca, and Marco, who were there for me from the initial proposal and always available to provide feedback and advice to improve this book. I want to thank my coworkers and friends from Systematic, who encouraged me throughout this period. I feel lucky to work with you.
+I want to thank Professor Giovanni Malnati from the Polytechnic University of Turin for introducing me to the Spring ecosystem in the first place and changing the course of my career. Big thanks to the Spring team for creating such a productive and valuable ecosystem. Special thanks to Josh Long for his incredible work that taught me so much and for writing the foreword to this book. It means a lot to me!
+I want to thank the entire Manning team for their huge help in making this book a valuable resource. I especially want to thank Michael Stephens (acquisition editor), Susan Ethridge (development editor), Jennifer Stout (development editor), Nickie Buckner (technical development editor), and Niek Palm (technical proofreader). Their feedback, advice, and encouragement brought great value to this book. Thanks also go to Mihaela Batinic´ (review editor), Andy Marinkovich (production editor), Andy Carroll (copy editor), Keri Hales (proofreader), and Paul Wells (production manager).
+xxiii
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xxiv
+
+ACKNOWLEDGMENTS
+
+To all the reviewers: Aaron Makin, Alexandros Dallas, Andres Sacco, Conor Redmond, Domingo Sebastian, Eddú Meléndez Gonzales, Fatih Mehmet Ucar, François-David Lessard, George Thomas, Gilberto Taccari, Gustavo Gomes, Harinath Kuntamukkala, Javid Asgarov, João Miguel, Pires Dias, John Guthrie, Kerry E. Koitzsch, Michal Rutka, Mladen Knezic´, Mohamed Sanaulla, Najeeb Arif, Nathan B. Crocker, Neil Croll, Özay Duman, Raffaella Ventaglio, Sani Sudhakaran Subhadra, Simeon Leyzerzon, Steve Rogers, Tan Wee, Tony Sweets, Yogesh Shetty, and Zorodzayi Mukuya, your suggestions helped make this a better book.
+Finally, I want to thank the Java community and all the fantastic people I met there over the years: open source contributors, fellow speakers, conference organizers, and everyone who contributes to making this community so special.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+about this book
+Cloud Native Spring in Action was written to help you design, build, and deploy cloud native applications using Spring Boot and Kubernetes. It defines a curated path to production and teaches effective techniques that you can immediately apply to enterprise-grade applications. It also takes you step by step from your first idea through to production, showing how cloud native development can add business value at every stage of the software development lifecycle. As you develop an online bookshop system, you'll learn how to build and test cloud native applications using the powerful libraries available in the Spring and Java ecosystems. Chapter by chapter, you'll work with REST APIs, data persistence, reactive programming, API gateways, functions, event-driven architectures, resilience, security, testing, and observability. The book then expands on how to package applications for the cloud as container images, how to configure deployments for cloud environments like Kubernetes, how to make your applications production-ready, and how to design your path from code to production using continuous delivery and continuous deployment.
+This book provides a hands-on, project-driven guide to help you navigate the increasingly complex cloud landscape and learn how to bring patterns and technologies together to build a real cloud native system and bring it to production.
+Who should read this book?
+This book is aimed at developers and architects who want to learn more about designing, building, and deploying production-ready cloud native applications using Spring Boot and Kubernetes.
+xxv
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xxvi
+
+ABOUT THIS BOOK
+
+To get the most benefit from this book, you'll want to have established Java programming skills, experience building web applications, and basic knowledge of the Spring core features. I'll assume you're familiar with Git, object-oriented programming, distributed systems, databases, and testing. Experience with Docker and Kubernetes is not required.
+How this book is organized: A road map
+The book has 4 parts that cover 16 chapters. Part 1 sets the stage for your cloud native journey from code to production and helps you better understand the topics covered in the rest of the book and place them correctly in the overall cloud native picture.
+ Chapter 1 is an introduction to the cloud native landscape. It defines what cloud native means, the fundamental properties of cloud native applications, and the processes supporting them.
+ Chapter 2 covers the principles of cloud native development and guides you through a first hands-on experience building a minimal Spring Boot application and deploying that to Kubernetes as a container.
+Part 2 introduces you to the main practices and patterns for building productionready cloud native applications using Spring Boot and Kubernetes.
+ Chapter 3 covers the fundamentals of starting a new cloud native project, including strategies for organizing the codebase, managing dependencies, and defining the commit stage of a deployment pipeline. You'll learn how to implement and test a REST API using Spring MVC and Spring Boot Test.
+ Chapter 4 discusses the importance of externalized configuration and covers some options available for Spring Boot applications, including property files, environment variables, and configuration services with Spring Cloud Config.
+ Chapter 5 presents the main aspects of data services in the cloud and shows you how to add data persistence to a Spring Boot application using Spring Data JDBC. You'll learn production options for managing data using Flyway and strategies for testing using Testcontainers.
+ Chapter 6 is about containers; you'll learn more about Docker and how to package Spring Boot applications as container images using Dockerfiles and Cloud Native Buildpacks.
+ Chapter 7 discusses Kubernetes and covers service discovery, load balancing, scalability, and local development workflows. You'll also learn more about how to deploy Spring Boot applications to a Kubernetes cluster.
+Part 3 covers the fundamental properties and patterns of distributed systems in the cloud, including resilience, security, scalability, and API gateways. It also describes reactive programming and event-driven architectures.
+ Chapter 8 introduces reactive programming and the main features of the Spring reactive stack, including Spring WebFlux and Spring Data R2DBC. It also teaches you how to make an application more resilient using Project Reactor.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+ABOUT THIS BOOK
+
+xxvii
+
+ Chapter 9 covers the API gateway pattern and how to build edge services with Spring Cloud Gateway. You'll learn how to build resilient applications with Spring Cloud and Resilience4J, using patterns like retries, timeouts, fallbacks, circuit breakers, and rate limiters.
+ Chapter 10 describes event-driven architectures and teaches you how to implement them with Spring Cloud Function, Spring Cloud Stream, and RabbitMQ.
+ Chapter 11 is all about security and shows you how to implement authentication in a cloud native system using Spring Security, OAuth2, OpenID Connect, and Keycloak. It also describes how to address security concerns like CORS and CSRF when single-page applications are part of the system.
+ Chapter 12 continues the security journey and covers how to use OAuth2 and Spring Security to delegate access within a distributed system, protect APIs and data, and authorize users based on their roles.
+Part 4 guides you through the last few steps to make your cloud native applications production-ready, addressing concerns like observability, configuration management, secrets management, and deployment strategies. It also covers serverless and native images.
+ Chapter 13 describes how to make your cloud native applications observable using Spring Boot Actuator, OpenTelemetry, and the Grafana observability stack. You'll learn how to configure Spring Boot applications to produce relevant telemetry data, such as logs, health, metrics, traces, and more.
+ Chapter 14 covers advanced configuration and secrets management strategies, including Kubernetes-native options like ConfigMaps, Secrets, and Kustomize.
+ Chapter 15 guides you through the final steps of your cloud native journey and teaches you how to configure Spring Boot for production. You'll then set up continuous deployment for your applications and deploy them to a Kubernetes cluster in the public cloud, adopting a GitOps strategy.
+ Chapter 16 covers serverless architectures and functions with Spring Native and Spring Cloud Function. You'll also learn about Knative and its powerful features that provide a superior developer experience on top of Kubernetes.
+In general, I recommend starting with chapter 1 and working through each chapter sequentially. If you prefer reading the chapters in a different order based on your particular interests, make sure you read chapters 1 through 3 first to better understand the terminology, patterns, and strategies used throughout the book. Even so, each chapter builds on the previous one, so some context might be missing if you decide to do that.
+About the code
+This book provides a hands-on and project-driven experience. Starting from chapter 2, you'll build a system composed of several cloud native applications for a fictitious online bookshop.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+xxviii
+
+ABOUT THIS BOOK
+
+You can get executable snippets of code from the liveBook (online) version of this book at https://livebook.manning.com/book/cloud-native-spring-in-action. All the source code for the project developed throughout the book is available on GitHub and licensed under the Apache License 2.0 (https://github.com/ThomasVitale/cloud -native-spring-in-action). For each chapter, you'll find a "begin" and an "end" folder. Each chapter builds on the previous one, but you can always use the "begin" folder for a given chapter as a starting point, even if you haven't followed the previous chapters. The "end" folder contains the final result after completing the steps for that chapter, and you can compare it against your own solution. For example, you can find the source code for chapter 3 in the Chapter03 folder, which contains 03-begin and 03-end folders.
+All the applications developed throughout the book are based on Java 17 and Spring Boot 2.7, and they are built with Gradle. The projects can be imported into any IDE with support for Java, Gradle, and Spring Boot, such as Visual Studio Code, IntelliJ IDEA, or Eclipse. You'll also need Docker installed. Chapter 2 and appendix A will provide more information to help you set up your local environment.
+The examples have been tested on macOS, Ubuntu, and Windows. On Windows, I recommend using the Windows Subsystem for Linux to complete the deployment and configuration tasks described throughout the book. On macOS, if you use an Apple Silicon computer, you can run all the examples, but you might experience performance issues from some tools that don't provide native support for ARM64 architectures at the time of writing. The chapters will include additional contextual information when relevant.
+The GitHub repository mentioned earlier (https://github.com/ThomasVitale/ cloud-native-spring-in-action) contains all the source code for this book in the main branch. Besides that, I plan to maintain an sb-2-main branch, where I'll keep the source code up to date with future releases of Spring Boot 2.x, and an sb-3-main branch where I'll evolve the source code based on future releases of Spring Boot 3.x.
+This book contains many examples of source code, both in numbered listings and inline with normal text. In both cases, source code is formatted in a fixed-width font like this to separate it from ordinary text. Sometimes code is also in bold to highlight code that has changed from previous steps in the chapter, such as when a new feature adds to an existing line of code.
+In many cases, the original source code has been reformatted; we've added line breaks and reworked indentation to accommodate the available page space in the book. In rare cases, even this was not enough, and listings include line-continuation markers (). Additionally, comments in the source code have often been removed from the listings when the code is described in the text. Code annotations accompany many of the listings, highlighting important concepts.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+ABOUT THIS BOOK
+
+xxix
+
+liveBook discussion forum
+Purchase of Cloud Native Spring in Action includes free access to liveBook, Manning's online reading platform. Using liveBook's exclusive discussion features, you can attach comments to the book globally or to specific sections or paragraphs. It's a snap to make notes for yourself, ask and answer technical questions, and receive help from the author and other users. To access the forum, go to https://livebook.manning.com /book/cloud-native-spring-in-action/discussion. You can also learn more about Manning's forums and the rules of conduct at https://livebook.manning.com/discussion.
+Manning's commitment to our readers is to provide a venue where a meaningful dialogue between individual readers and between readers and the author can take place. It is not a commitment to any specific amount of participation on the part of the author, whose contribution to the forum remains voluntary (and unpaid). We suggest you try asking the author some challenging questions lest his interest stray! The forum and the archives of previous discussions will be accessible from the publisher's website as long as the book is in print.
+Other online resources
+You can find me online through Twitter (@vitalethomas), LinkedIn (www.linkedin .com/in/vitalethomas), or my blog at https://thomasvitale.com.
+If you'd like to learn more about the Spring ecosystem, I maintain a list of educational resources with books, videos, podcasts, courses, and events at https://github .com/ThomasVitale/awesome-spring.
+
+Licensed to Zhigang Li <lzg14@qq.com>
+
+
